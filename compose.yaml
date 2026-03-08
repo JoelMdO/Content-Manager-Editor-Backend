@@ -1,0 +1,198 @@
+x-app: &default-app
+  build:
+    context: "."
+    target: "app"
+    args:
+      - "APP_UID=${UID:-1000}"
+      - "APP_GID=${GID:-1000}"
+      - "DEBUG=${DEBUG:-false}"
+      - "NODE_ENV=${NODE_ENV:-production}"
+  depends_on:
+    postgres:
+      condition: "service_started"
+      required: false
+    redis:
+      condition: "service_started"
+      required: false
+  env_file:
+    - ".env"
+  restart: "${DOCKER_RESTART_POLICY:-unless-stopped}"
+  stop_grace_period: "3s"
+  tty: true
+  volumes:
+    - "${DOCKER_WEB_VOLUME:-./public_collected:/app/public_collected}"
+
+x-assets: &default-assets
+  build:
+    context: "."
+    target: "assets"
+    args:
+      - "APP_UID=${UID:-1000}"
+      - "APP_GID=${GID:-1000}"
+      - "NODE_ENV=${NODE_ENV:-production}"
+  env_file:
+    - ".env"
+  profiles: ["assets"]
+  restart: "no"
+  stop_grace_period: "0"
+  tty: true
+  volumes:
+    - ".:/app"
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  VOLUMES  — independent of any container
+# ─────────────────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  django_media:
+  django_static:
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  NETWORKS
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  backend:
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SERVICES
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+  # ── Postgres ───────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks:
+      - backend
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${DB_NAME:-blog_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-blog_db}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  # postgres:
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "${DOCKER_POSTGRES_CPUS:-0}"
+  #         memory: "${DOCKER_POSTGRES_MEMORY:-0}"
+  #   environment:
+  #     POSTGRES_USER: "${POSTGRES_USER}"
+  #     POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+  #     # POSTGRES_DB: "${POSTGRES_DB}"
+  #   image: "postgres:18.1-trixie"
+  #   profiles: ["postgres"]
+  #   restart: "${DOCKER_RESTART_POLICY:-unless-stopped}"
+  #   stop_grace_period: "3s"
+  #   volumes:
+  #     - "postgres:/var/lib/postgresql"
+
+  web:
+    <<: *default-app
+    # Use the same built image as the `django` service so this service
+    # can be used to exec/manage the Django app (migrations, createsuperuser)
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: blog-store-django:latest
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - django_media:/data/media
+      - django_static:/app/staticfiles
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key-change-in-prod}
+      DEBUG: ${DEBUG:-True}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DB_NAME: ${DB_NAME:-blog_db}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_HOST: db
+      DB_PORT: 5432
+      POSTGRES_DB: ${DB_NAME:-blog_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_HOST: ${DB_HOST:-db}
+      POSTGRES_PORT: ${DB_PORT:-5432}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      MEDIA_ROOT: /data/media
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
+    deploy:
+      resources:
+        limits:
+          cpus: "${DOCKER_WEB_CPUS:-0}"
+          memory: "${DOCKER_WEB_MEMORY:-0}"
+    healthcheck:
+      test: "${DOCKER_WEB_HEALTHCHECK_TEST:-curl localhost:8000/up}"
+      interval: "60s"
+      timeout: "3s"
+      start_period: "5s"
+      retries: 3
+    ports:
+      - "${DOCKER_WEB_PORT_FORWARD:-127.0.0.1:8000}:${PORT:-8000}"
+    profiles: ["web"]
+
+  worker:
+    <<: *default-app
+    command: celery -A config worker -l "${CELERY_LOG_LEVEL:-info}"
+    entrypoint: []
+    deploy:
+      resources:
+        limits:
+          cpus: "${DOCKER_WORKER_CPUS:-0}"
+          memory: "${DOCKER_WORKER_MEMORY:-0}"
+    profiles: ["worker"]
+
+  js:
+    <<: *default-assets
+    command: "../run yarn:build:js"
+
+  css:
+    <<: *default-assets
+    command: "../run yarn:build:css"
+
+  # ── Django REST API ────────────────────────────────────────────────────────
+  django:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: blog-store-django:latest
+    restart: unless-stopped
+    networks:
+      - backend
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - django_media:/data/media
+      - django_static:/app/staticfiles
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key-change-in-prod}
+      DEBUG: ${DEBUG:-True}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DB_NAME: ${DB_NAME:-blog_db}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_HOST: db
+      DB_PORT: 5432
+      POSTGRES_DB: ${DB_NAME:-blog_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_HOST: ${DB_HOST:-db}
+      POSTGRES_PORT: ${DB_PORT:-5432}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      MEDIA_ROOT: /data/media
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
+    expose:
+      - "8000"
+    ports:
+      - "127.0.0.1:8000:8000"

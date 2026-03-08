@@ -1,0 +1,9 @@
+{% load static %}
+<nav>
+  {% include 'css.html' %}
+  <ul>
+    <li><a href="{% url 'home' %}">Home</a></li>
+    <li><a href="{% url 'articles' %}">Products</a></li>
+    <li><a href="{% url 'login' %}">Login</a></li>
+  </ul>
+</nav>
