@@ -59,12 +59,21 @@ COPY --chown=python:python bin/ ./bin
 
 ENV PYTHONUNBUFFERED="true" \
   PYTHONPATH="." \
-  UV_COMPILE_BYTECODE=1 \
-  UV_PROJECT_ENVIRONMENT="/home/python/.local" \
   PATH="${PATH}:/home/python/.local/bin" \
   USER="python"
 
-RUN chmod 0755 bin/* && bin/uv-install
+# ORIGINAL — replaced by: switched to pip install for pyproject.toml dependencies
+# RUN chmod 0755 bin/* && bin/uv-install
+
+# UPDATED — install dependencies using pip
+RUN pip install --upgrade pip setuptools
+RUN pip install .
+
+# CHANGE LOG
+# Changed by : Copilot
+# Date       : 2026-03-17
+# Reason     : Removed uv-install step, switched to pip install for pyproject.toml dependencies.
+# Impact     : Python dependencies now installed via pip, uv not required, build step simplified.
 
 CMD ["bash"]
 

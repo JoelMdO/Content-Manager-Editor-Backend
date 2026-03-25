@@ -78,22 +78,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-  # postgres:
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         cpus: "${DOCKER_POSTGRES_CPUS:-0}"
-  #         memory: "${DOCKER_POSTGRES_MEMORY:-0}"
-  #   environment:
-  #     POSTGRES_USER: "${POSTGRES_USER}"
-  #     POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-  #     # POSTGRES_DB: "${POSTGRES_DB}"
-  #   image: "postgres:18.1-trixie"
-  #   profiles: ["postgres"]
-  #   restart: "${DOCKER_RESTART_POLICY:-unless-stopped}"
-  #   stop_grace_period: "3s"
-  #   volumes:
-  #     - "postgres:/var/lib/postgresql"
 
   web:
     <<: *default-app
@@ -145,6 +129,9 @@ services:
     <<: *default-app
     command: celery -A config worker -l "${CELERY_LOG_LEVEL:-info}"
     entrypoint: []
+    depends_on:
+      db:
+        condition: service_healthy
     deploy:
       resources:
         limits:

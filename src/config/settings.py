@@ -27,7 +27,7 @@ SECRET_KEY = os.environ.get("SECRET_KEY") or os.environ.get("DJANGO_SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = bool(strtobool(os.getenv("DEBUG", "false")))
 
-TESTING = "test" in sys.argv
+TESTING = ("test" in sys.argv) or any("pytest" in s for s in sys.argv) or os.environ.get("DJANGO_TESTING") == "1"
 
 # https://docs.djangoproject.com/en/6.0/ref/settings/#std:setting-ALLOWED_HOSTS
 allowed_hosts = os.getenv("ALLOWED_HOSTS", ".localhost,127.0.0.1,[::1]")
@@ -47,7 +47,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -56,12 +55,16 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
+# Add whitenoise in non-testing environments only (avoid import during tests)
 if not TESTING:
-    INSTALLED_APPS = [*INSTALLED_APPS, "debug_toolbar"] # type: ignore
-    MIDDLEWARE = [ # type: ignore
-        "debug_toolbar.middleware.DebugToolbarMiddleware",
-        *MIDDLEWARE,
-    ]
+    if "whitenoise.middleware.WhiteNoiseMiddleware" not in MIDDLEWARE:
+        MIDDLEWARE.insert(0, "whitenoise.middleware.WhiteNoiseMiddleware")
+
+if DEBUG and not TESTING:
+    if "debug_toolbar" not in INSTALLED_APPS:  # type: ignore
+        INSTALLED_APPS.append("debug_toolbar")  # type: ignore
+    if "debug_toolbar.middleware.DebugToolbarMiddleware" not in MIDDLEWARE:  # type: ignore
+        MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")  # type: ignore
 
 ROOT_URLCONF = "config.urls"
 
@@ -104,6 +107,17 @@ DATABASES = {
         "PORT": os.getenv("POSTGRES_PORT", "5432"),
     }
 }
+
+# ADDED 2026-03-16 — Shared secret for the internal RAG corpus endpoint
+# The FastAPI service sends this value in the X-RAG-Token header when fetching articles.
+RAG_INTERNAL_TOKEN = os.getenv("RAG_INTERNAL_TOKEN", "")
+# CHANGE LOG
+# Changed by : Copilot
+# Date       : 2026-03-16
+# Reason     : Added RAG_INTERNAL_TOKEN so RagCorpusView can authenticate calls
+#              from the FastAPI RAG ingestion service.
+# Impact     : Must be set in the .env file and matched by CMS_RAG_TOKEN in the
+#              FastAPI .env. If empty, RagCorpusView denies all requests.
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -160,12 +174,15 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # Django Debug Toolbar
 # https://django-debug-toolbar.readthedocs.io/
-if DEBUG:
+if DEBUG and not TESTING:
     # We need to configure an IP address to allow connections from, but in
     # Docker we can't use 127.0.0.1 since this runs in a container but we want
     # to access the toolbar from our browser outside of the container.
-    hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
-    INTERNAL_IPS = [ip[: ip.rfind(".")] + ".1" for ip in ips] + [
-        "127.0.0.1",
-        "10.0.2.2",
-    ]
+    try:
+        hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
+        INTERNAL_IPS = [ip[: ip.rfind(".")] + ".1" for ip in ips] + [
+            "127.0.0.1",
+            "10.0.2.2",
+        ]
+    except Exception:
+        INTERNAL_IPS = ["127.0.0.1", "10.0.2.2"]
