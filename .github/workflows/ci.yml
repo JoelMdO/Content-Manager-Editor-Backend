@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint with ruff
+        run: uv run ruff check .
+
+      - name: Run tests
+        working-directory: src
+        env:
+          DJANGO_SETTINGS_MODULE: config.test_settings
+          SECRET_KEY: ci-secret-key
+          PROXY_KEY: ci-proxy-key
+          RAG_INTERNAL_TOKEN: ci-rag-token
+        run: uv run python manage.py test --verbosity=2
