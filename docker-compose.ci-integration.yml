@@ -1,0 +1,60 @@
+# docker-compose.ci-integration.yml
+#
+# Starts the Django app + Postgres for running integration tests in CI.
+# Designed to run from the Backend-Editor repository root.
+#
+# Usage (local):
+#   docker compose -f docker-compose.ci-integration.yml up -d --build
+#   uv run --group dev pytest tests/integration/ -m cms_integration -v
+#   docker compose -f docker-compose.ci-integration.yml down --volumes
+#
+# In CI this file is used by the `integration-test` job in .github/workflows/ci.yml.
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8000"
+    environment:
+      SECRET_KEY: "ci-integration-secret-not-for-production"
+      DEBUG: "false"
+      DJANGO_TESTING: "0"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,web"
+      POSTGRES_DB: "ci_integration_db"
+      POSTGRES_USER: "ci_user"
+      POSTGRES_PASSWORD: "ci-password"
+      POSTGRES_HOST: "db"
+      POSTGRES_PORT: "5432"
+      EMAIL_PORT: "587"
+      PYTHON_VERSION: "3.14"
+      RAG_INTERNAL_TOKEN: "ci-rag-token"
+      PROXY_KEY: "ci-proxy-key"
+      CORS_ALLOWED_ORIGINS: '["http://localhost"]'
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "python manage.py migrate --no-input &&
+             gunicorn -c python:config.gunicorn config.wsgi"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/up/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: "ci_integration_db"
+      POSTGRES_USER: "ci_user"
+      POSTGRES_PASSWORD: "ci-password"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ci_user -d ci_integration_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes: {}

@@ -21,9 +21,9 @@ from django.urls import include, path
 
 urlpatterns = [
     path("up/", include("up.urls")),
-    path("", include("pages.urls")),
     path("articles/", include("articles.urls")),
     path("admin/", admin.site.urls),
+    path("auth/", include("users.urls")),
 ]
 if not settings.TESTING:
     urlpatterns = [

@@ -1,35 +1,13 @@
-FROM node:20.18.1-slim AS assets
+FROM busybox:1.36.1 AS assets
 LABEL maintainer="Joel Montes de Oca <joelmontesdeoca@proton.me>"
 
-WORKDIR /app/assets
+WORKDIR /app
 
-ARG APP_UID=1000
-ARG APP_GID=1000
+# Minimal assets stage for backend-only deployments.
+# Creates the expected /app/public directory so later stages can COPY it.
+RUN mkdir -p /app/public
 
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential \
-  && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man \
-  && apt-get clean \
-  && groupmod -g "${APP_GID}" node && usermod -u "${APP_UID}" -g "${APP_GID}" node \
-  && mkdir -p /node_modules && chown node:node -R /node_modules /app
-
-USER node
-
-COPY --chown=node:node assets/package.json assets/*yarn* ./
-
-RUN yarn install && yarn cache clean
-
-ARG NODE_ENV="production"
-ENV NODE_ENV="${NODE_ENV}" \
-  PATH="${PATH}:/node_modules/.bin" \
-  USER="node"
-
-COPY --chown=node:node . ..
-
-RUN if [ "${NODE_ENV}" != "development" ]; then \
-  ../run yarn:build:js && ../run yarn:build:css; else mkdir -p /app/public; fi
-
-CMD ["bash"]
+CMD ["true"]
 
 ###############################################################################
 

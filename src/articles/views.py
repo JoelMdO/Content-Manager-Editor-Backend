@@ -93,6 +93,10 @@ class RagCorpusView(APIView):
                             parts.append(child_text.strip()) # type: ignore
         return " ".join(parts) # type: ignore
 
+    # Backwards-compatible alias used by older tests
+    def _extract_plain_text(self, body: object) -> str:  # type: ignore
+        return self.extract_plain_text(body)
+
     def get(self, request: Request):  # type: ignore
         """Return published articles for the requested language."""
         if not self.check_token(request):

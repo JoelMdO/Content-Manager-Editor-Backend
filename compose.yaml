@@ -93,6 +93,7 @@ services:
     volumes:
       - django_media:/data/media
       - django_static:/app/staticfiles
+      - ./Backend-Editor/src:/app/src
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key-change-in-prod}
       DEBUG: ${DEBUG:-True}

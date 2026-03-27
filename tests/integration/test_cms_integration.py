@@ -218,3 +218,68 @@ def test_image_upload_no_file_no_base64_returns_400(client):  # type: ignore
         headers={"X-Internal-Proxy-Key": PROXY_KEY},
     )  # type: ignore
     assert resp.status_code == 400 # type: ignore
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/ — user authentication
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.cms_integration
+def test_auth_login_no_body_returns_400(client):  # type: ignore
+    """POST /auth/login/ with empty body must return 400."""
+    resp = client.post("/auth/login/", json={})  # type: ignore
+    assert resp.status_code == 400  # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_auth_login_invalid_credentials_returns_401(client):  # type: ignore
+    """POST /auth/login/ with unrecognised credentials must return 401."""
+    resp = client.post(  # type: ignore
+        "/auth/login/",
+        json={"email": "nobody@example.com", "password": "wrong"},
+    )
+    assert resp.status_code == 401  # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_auth_upsert_user_missing_email_returns_400(client):  # type: ignore
+    """POST /auth/users/ without email must return 400."""
+    resp = client.post("/auth/users/", json={})  # type: ignore
+    assert resp.status_code == 400  # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_auth_upsert_user_creates_new_user_returns_201(client):  # type: ignore
+    """POST /auth/users/ with a new unique email must return 201."""
+    resp = client.post(  # type: ignore
+        "/auth/users/",
+        json={"email": "ci-new-user@integration.test", "name": "CI User"},
+    )
+    assert resp.status_code == 201  # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_auth_upsert_user_existing_user_returns_200(client):  # type: ignore
+    """POST /auth/users/ twice with the same email must return 200 on the second call."""
+    payload = {"email": "ci-idempotent@integration.test", "name": "CI Idempotent"}
+    client.post("/auth/users/", json=payload)  # type: ignore — seed
+    resp = client.post("/auth/users/", json=payload)  # type: ignore — duplicate
+    assert resp.status_code == 200  # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_auth_password_reset_always_returns_200(client):  # type: ignore
+    """POST /auth/password-reset/ must always return 200 — no user enumeration."""
+    resp = client.post(  # type: ignore
+        "/auth/password-reset/",
+        json={"email": "ghost@integration.test"},
+    )
+    assert resp.status_code == 200  # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_auth_logout_returns_200(client):  # type: ignore
+    """POST /auth/logout/ must return 200."""
+    resp = client.post("/auth/logout/", json={})  # type: ignore
+    assert resp.status_code == 200  # type: ignore
