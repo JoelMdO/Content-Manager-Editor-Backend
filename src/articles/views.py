@@ -39,9 +39,9 @@ class ArticleDraftViewSet(APIView):
                 serializer.save()
                 return Response(serializer.data, status=status.HTTP_201_CREATED)# type: ignore
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)# type: ignore
-        except Exception as e:
-            logger.exception("Error saving article draft")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e: 
+            logger.exception("Error saving article draft: %s", str(e))
+            return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ADDED 2026-03-16 — Internal endpoint for the FastAPI RAG ingestion service
@@ -168,8 +168,8 @@ class ArticleImageUploadView(APIView):
             logger.debug("serializer errors: %s", serializer.errors) # type: ignore
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)  # type: ignore
         except Exception as e:
-            logger.exception("Unhandled error in ArticleImageUploadView.post")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Unhandled error in ArticleImageUploadView.post: %s", str(e))
+            return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # CHANGE LOG
 # Changed by : Copilot
