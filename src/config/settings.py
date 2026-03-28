@@ -224,3 +224,5 @@ if DEBUG and not TESTING:
         INTERNAL_IPS[:] = new_ips
     except Exception:
         INTERNAL_IPS[:] = ["127.0.0.1", "10.0.2.2"]
+
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")

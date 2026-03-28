@@ -7,6 +7,7 @@ from rest_framework.request import Request
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken  # type: ignore[import-untyped]
 from users.serializers import LoginSerializer, UpsertUserSerializer
+import config.settings as settings
 
 # Create your views here.
 """ Views using Django REST Framework for API endpoints related to user authentication and management.
@@ -51,6 +52,9 @@ def login_view(request: Request):
 def upsert_user_view(request: Request):
     """Upsert user called by NextAuth signIn callback. Creates user on first sign-in,
     but does nothing on subsequent ones."""
+
+    if request.headers.get("X-Internal-Key") != settings.INTERNAL_API_KEY:
+        return Response({"error": "Unauthorized"}, status=401)
     serializer = UpsertUserSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
