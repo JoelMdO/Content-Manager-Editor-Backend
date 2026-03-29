@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   test:
     name: Lint & Test
@@ -36,3 +40,52 @@ jobs:
           PROXY_KEY: ci-proxy-key
           RAG_INTERNAL_TOKEN: ci-rag-token
         run: uv run python manage.py test --verbosity=2
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies (including dev group)
+        run: uv sync --group dev
+
+      - name: Start services
+        run: docker compose -f docker-compose.ci-integration.yml up -d --build
+
+      - name: Wait for web service to be healthy
+        run: |
+          echo "Waiting for Django to be ready..."
+          for i in $(seq 1 24); do
+            if curl -sf http://localhost:8080/up/; then
+              echo "Service is up."
+              exit 0
+            fi
+            echo "Attempt $i/24 — retrying in 5 s..."
+            sleep 5
+          done
+          echo "Service did not become healthy in time."
+          docker compose -f docker-compose.ci-integration.yml logs web
+          exit 1
+
+      - name: Run integration tests
+        env:
+          CMS_BASE_URL: http://localhost:8080
+          CMS_RAG_TOKEN: ci-rag-token
+          CMS_PROXY_KEY: ci-proxy-key
+        run: uv run --group dev pytest tests/integration/ -m cms_integration -v --tb=short
+
+      - name: Stop services
+        if: always()
+        run: docker compose -f docker-compose.ci-integration.yml down --volumes

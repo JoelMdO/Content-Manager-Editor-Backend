@@ -3,12 +3,13 @@ Unit tests for ArticleManagerSerializer and ArticleImageCreateSerializer.
 """
 import base64
 import uuid
-from django.test import TestCase
-from articles.serializers import (
-    ArticleManagerSerializer,
-    ArticleImageCreateSerializer,
-)
 
+from django.test import TestCase
+
+from articles.serializers import (
+    ArticleImageCreateSerializer,
+    ArticleManagerSerializer,
+)
 
 # ── ArticleManagerSerializer ─────────────────────────────────────────────────
 

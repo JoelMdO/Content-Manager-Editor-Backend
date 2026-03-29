@@ -1,10 +1,10 @@
-import os
 import base64
+import os
 import tempfile
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from rest_framework.test import APITestCase
-from django.core.files.uploadedfile import SimpleUploadedFile
 
 _URL = "/articles/images/"
 _PROXY_KEY = "test-proxy-key"

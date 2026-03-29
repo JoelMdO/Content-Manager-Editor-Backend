@@ -1,17 +1,25 @@
-from rest_framework.request import Request
-from rest_framework.response import Response
-from rest_framework import status
-# ADDED 2026-03-16 — RAG corpus endpoint imports
-from rest_framework.views import APIView
-from django.conf import settings
-import re
-import os
+import contextlib
 import hmac
 import logging
+import os
+import re
+
+from django.conf import settings
+from django.db import DatabaseError, connections, transaction
+
+# ADDED 2026-03-16 — RAG corpus endpoint imports
+from rest_framework import status
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .serializers import (
+    ArticleImageCreateSerializer,
+    ArticleImageUploadSerializer,
+    ArticleManagerSerializer,
+)
 
 logger = logging.getLogger(__name__)
-
-from .serializers import ArticleManagerSerializer, ArticleImageCreateSerializer, ArticleImageUploadSerializer
 
 
 class ArticleDraftViewSet(APIView):
@@ -35,13 +43,42 @@ class ArticleDraftViewSet(APIView):
     def post(self, request: Request):
         try:
             serializer = ArticleManagerSerializer(data=request.data, context={"request": request})
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data, status=status.HTTP_201_CREATED)# type: ignore
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)# type: ignore
-        except Exception as e:
-            logger.exception("Error saving article draft")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)  # type: ignore
+
+            try:
+                with transaction.atomic():
+                    instance = serializer.save()  # type: ignore
+            except DatabaseError as db_err:
+                logger.exception("Database error saving article draft: %s", str(db_err))
+                return Response({"error": "Database error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Attempt best-effort replication to Neon (if configured). We schedule
+            # this after the local transaction commits to avoid blocking the
+            # primary write. Replication is best-effort: failures are logged
+            # and do not roll back the primary write.
+            def _replicate():
+                neon_alias = "neon"
+                if neon_alias not in connections.databases:
+                    return
+                try:
+                    # Try to save the same instance to the `neon` DB.
+                    instance.save(using=neon_alias)  # type: ignore
+                except Exception as re_err:
+                    logger.exception("Failed to replicate article id=%s to Neon: %s", getattr(instance, 'id', None), str(re_err)) # type: ignore
+
+            try:
+                transaction.on_commit(_replicate)
+            except Exception:
+                # If on_commit isn't available or fails, attempt immediate replicate
+                with contextlib.suppress(Exception):
+                    _replicate()
+
+            out = ArticleManagerSerializer(instance, context={"request": request}).data  # type: ignore
+            return Response(out, status=status.HTTP_201_CREATED)
+        except Exception as e: 
+            logger.exception("Error saving article draft: %s", str(e))
+            return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ADDED 2026-03-16 — Internal endpoint for the FastAPI RAG ingestion service
@@ -92,6 +129,10 @@ class RagCorpusView(APIView):
                         if isinstance(child_text, str):
                             parts.append(child_text.strip()) # type: ignore
         return " ".join(parts) # type: ignore
+
+    # Backwards-compatible alias used by older tests
+    def _extract_plain_text(self, body: object) -> str:  # type: ignore
+        return self.extract_plain_text(body)
 
     def get(self, request: Request):  # type: ignore
         """Return published articles for the requested language."""
@@ -164,8 +205,8 @@ class ArticleImageUploadView(APIView):
             logger.debug("serializer errors: %s", serializer.errors) # type: ignore
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)  # type: ignore
         except Exception as e:
-            logger.exception("Unhandled error in ArticleImageUploadView.post")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Unhandled error in ArticleImageUploadView.post: %s", str(e))
+            return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # CHANGE LOG
 # Changed by : Copilot
