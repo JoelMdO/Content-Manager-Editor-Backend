@@ -1,4 +1,5 @@
 import json
+import os
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -101,6 +102,16 @@ class UpsertUserViewTests(TestCase):
 
     URL = "/auth/users/"
     _PROXY_KEY = "test-proxy-key"
+
+    def setUp(self):
+        self._original_proxy_key = os.environ.get("PROXY_KEY")
+        os.environ["PROXY_KEY"] = self._PROXY_KEY
+
+    def tearDown(self):
+        if self._original_proxy_key is None:
+            os.environ.pop("PROXY_KEY", None)
+        else:
+            os.environ["PROXY_KEY"] = self._original_proxy_key
 
     def _post(self, payload): #type: ignore
         return self.client.post(
