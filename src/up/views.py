@@ -1,5 +1,5 @@
 from django.db import connection
-from django.http import HttpResponse, HttpResponseServerError, HttpRequest
+from django.http import HttpRequest, HttpResponse, HttpResponseServerError
 
 
 def index(request: HttpRequest):

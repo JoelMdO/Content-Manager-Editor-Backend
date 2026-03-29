@@ -1,7 +1,8 @@
 from typing import List, Union
-from django.urls import path, URLPattern, URLResolver
-from .views import ArticleDraftViewSet, RagCorpusView, ArticleImageUploadView
 
+from django.urls import URLPattern, URLResolver, path
+
+from .views import ArticleDraftViewSet, ArticleImageUploadView, RagCorpusView
 
 urlpatterns: List[Union[URLPattern, URLResolver]] = [
     path("", ArticleDraftViewSet.as_view()),

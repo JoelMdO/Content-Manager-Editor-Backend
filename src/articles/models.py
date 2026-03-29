@@ -1,7 +1,8 @@
-from django.db import models
-import uuid
 import base64
+import uuid
+
 from django.core.files.base import ContentFile
+from django.db import models
 
 
 class ArticleModel(models.Model):

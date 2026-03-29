@@ -32,7 +32,6 @@ from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -85,6 +84,7 @@ def _make_ser_and_inst(
 def _post_to_view(payload=None): #type: ignore
     """Issue POST /articles/ through ArticleDraftViewSet.as_view()."""
     from rest_framework.test import APIRequestFactory
+
     from articles.views import ArticleDraftViewSet
 
     factory = APIRequestFactory()

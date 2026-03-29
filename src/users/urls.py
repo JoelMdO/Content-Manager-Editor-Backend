@@ -1,9 +1,13 @@
 from typing import List, Union
-from django.urls import path, URLPattern, URLResolver
+
+from django.urls import URLPattern, URLResolver, path
+
 from . import views
 
 try:
-    from rest_framework_simplejwt.views import TokenRefreshView  # type: ignore[import-untyped]
+    from rest_framework_simplejwt.views import (
+        TokenRefreshView,  # type: ignore[import-untyped]
+    )
     _simplejwt_available = True
 except ImportError:
     _simplejwt_available = False

@@ -3,15 +3,22 @@ import os
 
 from django.contrib.auth import authenticate, get_user_model, logout
 from django.contrib.auth.forms import PasswordResetForm
-from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.decorators import (
+    api_view,
+    permission_classes,
+    throttle_classes,
+)
 from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
 from rest_framework.request import Request
+from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
+
 from users.serializers import LoginSerializer, UpsertUserSerializer
 
 try:
-    from rest_framework_simplejwt.tokens import RefreshToken  # type: ignore[import-untyped]
+    from rest_framework_simplejwt.tokens import (
+        RefreshToken,  # type: ignore[import-untyped]
+    )
     _simplejwt_available = True
 except ImportError:
     RefreshToken = None  # type: ignore[assignment,misc]

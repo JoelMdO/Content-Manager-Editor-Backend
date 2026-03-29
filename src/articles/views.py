@@ -1,19 +1,25 @@
-from rest_framework.request import Request
-from rest_framework.response import Response
-from rest_framework import status
-# ADDED 2026-03-16 — RAG corpus endpoint imports
-from rest_framework.views import APIView
-from django.conf import settings
-from django.db import transaction, DatabaseError
-from django.db import connections
-import re
-import os
+import contextlib
 import hmac
 import logging
+import os
+import re
+
+from django.conf import settings
+from django.db import DatabaseError, connections, transaction
+
+# ADDED 2026-03-16 — RAG corpus endpoint imports
+from rest_framework import status
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .serializers import (
+    ArticleImageCreateSerializer,
+    ArticleImageUploadSerializer,
+    ArticleManagerSerializer,
+)
 
 logger = logging.getLogger(__name__)
-
-from .serializers import ArticleManagerSerializer, ArticleImageCreateSerializer, ArticleImageUploadSerializer
 
 
 class ArticleDraftViewSet(APIView):
@@ -65,10 +71,8 @@ class ArticleDraftViewSet(APIView):
                 transaction.on_commit(_replicate)
             except Exception:
                 # If on_commit isn't available or fails, attempt immediate replicate
-                try:
+                with contextlib.suppress(Exception):
                     _replicate()
-                except Exception:
-                    pass
 
             out = ArticleManagerSerializer(instance, context={"request": request}).data  # type: ignore
             return Response(out, status=status.HTTP_201_CREATED)

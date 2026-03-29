@@ -10,14 +10,16 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
-from datetime import timedelta
 import os
 import socket
 import sys
+from datetime import timedelta
 from pathlib import Path
-from utils.strtbool import DistUtils
-from dotenv import load_dotenv
 from urllib.parse import urlparse
+
+from dotenv import load_dotenv
+
+from utils.strtbool import DistUtils
 
 # Load environment variables from .env file
 load_dotenv()
@@ -96,9 +98,8 @@ else:
     }
 
 # Add whitenoise in non-testing environments only (avoid import during tests)
-if not TESTING:
-    if "whitenoise.middleware.WhiteNoiseMiddleware" not in MIDDLEWARE:
-        MIDDLEWARE.insert(0, "whitenoise.middleware.WhiteNoiseMiddleware")
+if not TESTING and "whitenoise.middleware.WhiteNoiseMiddleware" not in MIDDLEWARE:
+    MIDDLEWARE.insert(0, "whitenoise.middleware.WhiteNoiseMiddleware")
 
 if DEBUG and not TESTING:
     if "debug_toolbar" not in INSTALLED_APPS:  # type: ignore
