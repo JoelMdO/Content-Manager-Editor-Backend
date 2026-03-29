@@ -31,6 +31,7 @@ services:
       PYTHON_VERSION: "3.14"
       RAG_INTERNAL_TOKEN: "ci-rag-token"
       PROXY_KEY: "ci-proxy-key"
+      INTERNAL_API_KEY: "ci-internal-key"
       CORS_ALLOWED_ORIGINS: '["http://localhost"]'
     depends_on:
       db:
