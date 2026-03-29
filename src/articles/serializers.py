@@ -1,7 +1,9 @@
-from rest_framework import serializers # type: ignore
 import uuid
-from .models import ArticleImageModel, ArticleModel
 from typing import Any, Dict
+
+from rest_framework import serializers  # type: ignore
+
+from .models import ArticleImageModel, ArticleModel
 
 
 class ArticleManagerSerializer(serializers.ModelSerializer): # type: ignore

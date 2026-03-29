@@ -4,6 +4,7 @@
 # python@c6b17816e31b:/app/src$ python
 
 from django.contrib.auth.models import User
+
 superusers = User.objects.filter(is_superuser=True)
 for user in superusers:
     print(f"Username: {user.username}, Email: {user.email}") #type: ignore

@@ -7,10 +7,14 @@ public/*
 !public/.keep
 public_collected/*
 !public_collected/.keep
-
+public/
+public_collected/
+venv/
 .env*
 !.env.example
 docker-compose.override.yml
+.hintrc
+Makefile
 
 
 ### Python ####################################################################
@@ -216,3 +220,6 @@ flycheck_*.el
 
 # network security
 /network-security.data
+
+# Test DB created during local tests
+src/test_db.sqlite3
