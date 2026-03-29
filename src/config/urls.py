@@ -34,7 +34,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("auth/", include("users.urls")),
 ]
-if not settings.TESTING:
+if settings.DEBUG and not settings.TESTING:
     urlpatterns = [
         *urlpatterns,
         path("__debug__/", include("debug_toolbar.urls")),
