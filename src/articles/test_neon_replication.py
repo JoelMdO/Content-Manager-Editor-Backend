@@ -215,7 +215,7 @@ class TestReplicateWhenNeonPresent(unittest.TestCase):
         """DatabaseError from the Neon save must not propagate."""
         mock_atomic.return_value    = _atomic_ctx()
         mock_connections.databases  = _CONNECTIONS_WITH_NEON
-        ser = _make_ser_and_inst(inst_save_side_effect=DatabaseError("Neon down"))
+        ser, _ = _make_ser_and_inst(inst_save_side_effect=DatabaseError("Neon down"))
         MockSer.return_value = ser
 
         _post_to_view()
@@ -231,7 +231,7 @@ class TestReplicateWhenNeonPresent(unittest.TestCase):
         """Any non-DB exception from Neon save must also be swallowed."""
         mock_atomic.return_value    = _atomic_ctx()
         mock_connections.databases  = _CONNECTIONS_WITH_NEON
-        ser = _make_ser_and_inst(inst_save_side_effect=RuntimeError("unexpected"))
+        ser, _ = _make_ser_and_inst(inst_save_side_effect=RuntimeError("unexpected"))
         MockSer.return_value = ser
 
         _post_to_view()
@@ -247,7 +247,7 @@ class TestReplicateWhenNeonPresent(unittest.TestCase):
         """Failed Neon replication must be logged at ERROR level."""
         mock_atomic.return_value    = _atomic_ctx()
         mock_connections.databases  = _CONNECTIONS_WITH_NEON
-        ser = _make_ser_and_inst(
+        ser, _ = _make_ser_and_inst(
             instance_id=42,
             inst_save_side_effect=DatabaseError("connection refused"),
         )
@@ -272,7 +272,7 @@ class TestReplicateWhenNeonPresent(unittest.TestCase):
         """No ERROR or WARNING must be emitted when replication succeeds."""
         mock_atomic.return_value    = _atomic_ctx()
         mock_connections.databases  = _CONNECTIONS_WITH_NEON
-        ser = _make_ser_and_inst()
+        ser, _ = _make_ser_and_inst()
         MockSer.return_value = ser
 
         _post_to_view()
@@ -319,7 +319,7 @@ class TestArticlePostResponseCodes(unittest.TestCase):
     @patch("articles.views.transaction.on_commit")
     @patch("articles.views.transaction.atomic")
     @patch("articles.views.ArticleManagerSerializer")
-    def test_valid_payload_returns_201(self, MockSer, mock_atomic): #type: ignore
+    def test_valid_payload_returns_201(self, MockSer, mock_atomic, mock_on_commit): #type: ignore
         mock_atomic.return_value = _atomic_ctx()
         ser, _ = _make_ser_and_inst()
         MockSer.return_value = ser
@@ -328,7 +328,7 @@ class TestArticlePostResponseCodes(unittest.TestCase):
     @patch("articles.views.transaction.on_commit")
     @patch("articles.views.transaction.atomic")
     @patch("articles.views.ArticleManagerSerializer")
-    def test_invalid_payload_returns_400(self, MockSer, mock_atomic): #type: ignore
+    def test_invalid_payload_returns_400(self, MockSer, mock_atomic, mock_on_commit): #type: ignore
         mock_atomic.return_value = _atomic_ctx()
         ser, _ = _make_ser_and_inst(is_valid=False)
         MockSer.return_value = ser
@@ -339,7 +339,7 @@ class TestArticlePostResponseCodes(unittest.TestCase):
     @patch("articles.views.transaction.on_commit")
     @patch("articles.views.transaction.atomic")
     @patch("articles.views.ArticleManagerSerializer")
-    def test_primary_db_error_returns_500(self, MockSer, mock_atomic): #type: ignore
+    def test_primary_db_error_returns_500(self, MockSer, mock_atomic, mock_on_commit): #type: ignore
         mock_atomic.return_value = _atomic_ctx()
         ser, _ = _make_ser_and_inst(ser_save_side_effect=DatabaseError("primary down"))
         MockSer.return_value = ser
@@ -350,7 +350,7 @@ class TestArticlePostResponseCodes(unittest.TestCase):
     @patch("articles.views.transaction.on_commit")
     @patch("articles.views.transaction.atomic")
     @patch("articles.views.ArticleManagerSerializer")
-    def test_response_includes_saved_data(self, MockSer, mock_atomic): #type: ignore
+    def test_response_includes_saved_data(self, MockSer, mock_atomic, mock_on_commit): #type: ignore
         """Response body comes from re-serialising the saved instance."""
         mock_atomic.return_value = _atomic_ctx()
         ser, _ = _make_ser_and_inst(instance_id=7)
@@ -369,7 +369,7 @@ class TestArticlePostResponseCodes(unittest.TestCase):
         """Primary 201 response must be unaffected by a Neon save error."""
         mock_atomic.return_value    = _atomic_ctx()
         mock_connections.databases  = _CONNECTIONS_WITH_NEON
-        ser = _make_ser_and_inst(
+        ser, _ = _make_ser_and_inst(
             inst_save_side_effect=DatabaseError("Neon down")
         )
         MockSer.return_value = ser
@@ -482,7 +482,7 @@ class TestCredentialSafetyInLogs(unittest.TestCase):
 
         mock_atomic.return_value    = _atomic_ctx()
         mock_connections.databases  = _CONNECTIONS_WITH_NEON
-        ser = _make_ser_and_inst(
+        ser, _ = _make_ser_and_inst(
             inst_save_side_effect=DatabaseError(
                 "password authentication failed for user 'neon_owner'"
             )
@@ -516,7 +516,7 @@ class TestCredentialSafetyInLogs(unittest.TestCase):
         """Django's SECRET_KEY must never appear in replication error logs."""
         mock_atomic.return_value    = _atomic_ctx()
         mock_connections.databases  = _CONNECTIONS_WITH_NEON
-        ser = _make_ser_and_inst(
+        ser, _ = _make_ser_and_inst(
             inst_save_side_effect=DatabaseError("timeout")
         )
         MockSer.return_value = ser
@@ -550,7 +550,7 @@ class TestReplicateInstanceIdInLog(unittest.TestCase):
     ):
         mock_atomic.return_value    = _atomic_ctx()
         mock_connections.databases  = _CONNECTIONS_WITH_NEON
-        ser = _make_ser_and_inst(
+        ser, _ = _make_ser_and_inst(
             instance_id=99,
             inst_save_side_effect=DatabaseError("timeout"),
         )

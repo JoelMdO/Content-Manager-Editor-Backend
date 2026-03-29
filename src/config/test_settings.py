@@ -35,3 +35,14 @@ os.environ.setdefault("PYTHON_VERSION", _sys.version.split()[0])
 
 # Use the default static files storage in tests (whitenoise is not installed locally)
 STATICFILES_STORAGE = "django.contrib.staticfiles.storage.StaticFilesStorage" #type: ignore
+
+# Use a local memory cache so tests don't require Redis
+CACHES = {  # type: ignore[assignment]
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    }
+}
+
+# Provide a permissive anon throttle rate so views with @throttle_classes([AnonRateThrottle])
+# don't raise ImproperlyConfigured during unit tests.
+REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {"anon": "10000/min"}  # type: ignore[index]

@@ -66,7 +66,7 @@ Response 200:
 }
 ```
 
-This endpoint is provided by `djangorestframework-simplejwt` automatically. No new login is required.
+This endpoint is wired into the `auth/` URL namespace (see `src/users/urls.py`). No new login is required.
 
 If the refresh token itself is expired (after 7 days), the user must log in again.
 
@@ -102,10 +102,10 @@ localStorage.removeItem("refresh_token");
 
 ## Token Lifetimes (Current Config)
 
-| Token         | Lifetime                   |
-| ------------- | -------------------------- |
-| Access token  | 12 hours                   |
-| Refresh token | 7 days (simplejwt default) |
+| Token         | Lifetime                                |
+| ------------- | --------------------------------------- |
+| Access token  | 12 hours                                |
+| Refresh token | 7 days (configured in `SIMPLE_JWT`)     |
 
 These are configured in `src/config/settings.py` inside `SIMPLE_JWT`.
 

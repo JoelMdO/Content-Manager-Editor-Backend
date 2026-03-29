@@ -1,3 +1,6 @@
+import hmac
+import os
+
 from django.contrib.auth import authenticate, get_user_model, logout
 from django.contrib.auth.forms import PasswordResetForm
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
@@ -5,9 +8,14 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.request import Request
 from rest_framework.throttling import AnonRateThrottle
-from rest_framework_simplejwt.tokens import RefreshToken  # type: ignore[import-untyped]
 from users.serializers import LoginSerializer, UpsertUserSerializer
-import config.settings as settings
+
+try:
+    from rest_framework_simplejwt.tokens import RefreshToken  # type: ignore[import-untyped]
+    _simplejwt_available = True
+except ImportError:
+    RefreshToken = None  # type: ignore[assignment,misc]
+    _simplejwt_available = False
 
 # Create your views here.
 """ Views using Django REST Framework for API endpoints related to user authentication and management.
@@ -33,18 +41,17 @@ def login_view(request: Request):
     if user is None:
         return Response({"error": "Invalid credentials"}, status=401)
 
-    try:
-        refresh: RefreshToken = RefreshToken.for_user(user) #type: ignore
-        return Response(
-            {
-                "access": str(refresh.access_token), # type: ignore
-                "refresh": str(refresh), #type: ignore
-            },
-            status=200,
-        )
-    except ImportError:
-        # simplejwt not available — fall back to a simple success acknowledgement.
+    if not _simplejwt_available or RefreshToken is None:
         return Response({"message": "Login successful"}, status=200)
+
+    refresh: RefreshToken = RefreshToken.for_user(user) #type: ignore
+    return Response(
+        {
+            "access": str(refresh.access_token), # type: ignore
+            "refresh": str(refresh), #type: ignore
+        },
+        status=200,
+    )
 
 
 @api_view(["POST"])
@@ -53,7 +60,9 @@ def upsert_user_view(request: Request):
     """Upsert user called by NextAuth signIn callback. Creates user on first sign-in,
     but does nothing on subsequent ones."""
 
-    if request.headers.get("X-Internal-Key") != settings.INTERNAL_API_KEY:
+    expected = os.environ.get("PROXY_KEY", "")
+    received = request.META.get("HTTP_X_INTERNAL_PROXY_KEY", "")
+    if not expected or not hmac.compare_digest(received, expected):
         return Response({"error": "Unauthorized"}, status=401)
     serializer = UpsertUserSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -66,7 +75,8 @@ def upsert_user_view(request: Request):
         email=email,
         defaults={"username": name or email},
     )
-    return Response({"message": f"{user} created successfully"}, status=201 if created else 200)
+    message = "created successfully" if created else "already exists"
+    return Response({"message": f"{user} {message}"}, status=201 if created else 200)
 
 
 @api_view(["POST"])

@@ -100,12 +100,14 @@ class UpsertUserViewTests(TestCase):
     """Unit tests for upsert_user_view — POST /auth/users/."""
 
     URL = "/auth/users/"
+    _PROXY_KEY = "test-proxy-key"
 
     def _post(self, payload): #type: ignore
         return self.client.post(
             self.URL,
             data=json.dumps(payload),
             content_type="application/json",
+            HTTP_X_INTERNAL_PROXY_KEY=self._PROXY_KEY,
         )
 
     def test_upsert_user_missing_email_returns_400(self):

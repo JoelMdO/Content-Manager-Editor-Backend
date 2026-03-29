@@ -41,6 +41,7 @@ ALLOWED_HOSTS = list(map(str.strip, allowed_hosts.split(",")))
 # Application definitions
 INSTALLED_APPS = [
     "articles.apps.ArticlesConfig",
+    "users.apps.UsersConfig",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -91,6 +92,7 @@ else:
 
     SIMPLE_JWT = {
         "ACCESS_TOKEN_LIFETIME": timedelta(hours=12),
+        "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     }
 
 # Add whitenoise in non-testing environments only (avoid import during tests)

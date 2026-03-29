@@ -17,9 +17,18 @@ Including another URLconf
 
 from django.conf import settings
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import include, path
+import django
+
+
+def home_view(request):  # type: ignore[no-untyped-def]
+    """Minimal home endpoint — confirms the API is running."""
+    return JsonResponse({"status": "ok", "django": django.__version__})
+
 
 urlpatterns = [
+    path("", home_view),
     path("up/", include("up.urls")),
     path("articles/", include("articles.urls")),
     path("admin/", admin.site.urls),
