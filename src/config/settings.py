@@ -210,12 +210,21 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
 # Caching
 # https://docs.djangoproject.com/en/6.0/topics/cache/
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": REDIS_URL,
+# Fall back to local-memory cache when Redis is not configured (e.g. integration-test
+# containers that don't run a Redis sidecar). DRF throttling will work in-process.
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+        }
     }
-}
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
 
 # Celery
 # https://docs.celeryproject.org/en/stable/userguide/configuration.html
