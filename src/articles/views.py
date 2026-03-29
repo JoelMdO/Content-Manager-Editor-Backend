@@ -4,6 +4,8 @@ from rest_framework import status
 # ADDED 2026-03-16 — RAG corpus endpoint imports
 from rest_framework.views import APIView
 from django.conf import settings
+from django.db import transaction, DatabaseError
+from django.db import connections
 import re
 import os
 import hmac
@@ -35,10 +37,41 @@ class ArticleDraftViewSet(APIView):
     def post(self, request: Request):
         try:
             serializer = ArticleManagerSerializer(data=request.data, context={"request": request})
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data, status=status.HTTP_201_CREATED)# type: ignore
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)# type: ignore
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)  # type: ignore
+
+            try:
+                with transaction.atomic():
+                    instance = serializer.save()  # type: ignore
+            except DatabaseError as db_err:
+                logger.exception("Database error saving article draft: %s", str(db_err))
+                return Response({"error": "Database error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Attempt best-effort replication to Neon (if configured). We schedule
+            # this after the local transaction commits to avoid blocking the
+            # primary write. Replication is best-effort: failures are logged
+            # and do not roll back the primary write.
+            def _replicate():
+                neon_alias = "neon"
+                if neon_alias not in connections.databases:
+                    return
+                try:
+                    # Try to save the same instance to the `neon` DB.
+                    instance.save(using=neon_alias)  # type: ignore
+                except Exception as re_err:
+                    logger.exception("Failed to replicate article id=%s to Neon: %s", getattr(instance, 'id', None), str(re_err)) # type: ignore
+
+            try:
+                transaction.on_commit(_replicate)
+            except Exception:
+                # If on_commit isn't available or fails, attempt immediate replicate
+                try:
+                    _replicate()
+                except Exception:
+                    pass
+
+            out = ArticleManagerSerializer(instance, context={"request": request}).data  # type: ignore
+            return Response(out, status=status.HTTP_201_CREATED)
         except Exception as e: 
             logger.exception("Error saving article draft: %s", str(e))
             return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

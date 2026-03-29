@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 from utils.strtbool import DistUtils
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 
 # Load environment variables from .env file
 load_dotenv()
@@ -144,6 +145,30 @@ DATABASES = {
         "PORT": os.getenv("POSTGRES_PORT", "5432"),
     }
 }
+
+# Optional Neon backup DB. If `NEON_URL` is present the project will expose a
+# second database alias named `neon` that can be used for replica/backup
+# writes (e.g. instance.save(using='neon')) or running migrations against
+# the remote Neon cluster via `manage.py migrate --database=neon`.
+NEON_URL = os.getenv("NEON_URL", "")
+if NEON_URL:
+    try:
+        _u = urlparse(NEON_URL)
+        DATABASES["neon"] = { # type: ignore
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": _u.path.lstrip("/"),
+            "USER": _u.username,
+            "PASSWORD": _u.password,
+            "HOST": _u.hostname,
+            "PORT": _u.port or "",
+            # Keep connections open for reuse; adjust as needed
+            "CONN_MAX_AGE": 600,
+            # Neon requires TLS; enforce sslmode unless explicitly included
+            "OPTIONS": {"sslmode": "require"},
+        }
+    except Exception:
+        # If parsing fails, don't crash startup — fall back to default only
+        pass
 
 # ADDED 2026-03-16 — Shared secret for the internal RAG corpus endpoint
 # The FastAPI service sends this value in the X-RAG-Token header when fetching articles.
