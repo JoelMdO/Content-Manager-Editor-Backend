@@ -15,6 +15,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    env_file: .env
     ports:
       - "8080:8000"
     environment:
@@ -53,10 +54,13 @@ services:
       POSTGRES_DB: "ci_integration_db"
       POSTGRES_USER: "ci_user"
       POSTGRES_PASSWORD: "ci-password"
+    volumes:
+      - db_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ci_user -d ci_integration_db"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-volumes: {}
+volumes:
+  db_data:

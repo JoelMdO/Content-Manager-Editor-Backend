@@ -3,6 +3,7 @@ import hmac
 import logging
 import os
 import re
+from typing import Optional
 
 from django.conf import settings
 from django.db import DatabaseError, connections, transaction
@@ -12,7 +13,6 @@ from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
 from .serializers import (
     ArticleImageCreateSerializer,
     ArticleImageUploadSerializer,
@@ -42,52 +42,48 @@ class ArticleDraftViewSet(APIView):
 
     def post(self, request: Request):
         try:
-            serializer = ArticleManagerSerializer(data=request.data, context={"request": request})
-            if not serializer.is_valid():
+            serializer = ArticleManagerSerializer(data=request.data, context={"request": request}) # type: ignore
+            if not serializer.is_valid(): # type: ignore
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)  # type: ignore
 
             try:
+                # Attempt to check if the data is valid before starting the transaction
+                # If valid, proceed with the save inside the transaction.atomic block
+                # At Article ManagerSerlizer
                 with transaction.atomic():
                     instance = serializer.save()  # type: ignore
             except DatabaseError as db_err:
                 logger.exception("Database error saving article draft: %s", str(db_err))
-                return Response({"error": "Database error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response({"error": "Database 1 error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR) # type: ignore
 
-            # Attempt best-effort replication to Neon (if configured). We schedule
-            # this after the local transaction commits to avoid blocking the
-            # primary write. Replication is best-effort: failures are logged
-            # and do not roll back the primary write.
-            def _replicate():
-                neon_alias = "neon"
-                if neon_alias not in connections.databases:
-                    return
+            # After the local transaction commits to avoid blocking the
+            # primary write. Will write if the article is as published to Neon DB.
+            if instance.status == "published":  # type: ignore
                 try:
-                    # Try to save the same instance to the `neon` DB.
-                    instance.save(using=neon_alias)  # type: ignore
-                except Exception as re_err:
-                    logger.exception("Failed to replicate article id=%s to Neon: %s", getattr(instance, 'id', None), str(re_err)) # type: ignore
-
-            try:
-                transaction.on_commit(_replicate)
-            except Exception:
-                # If on_commit isn't available or fails, attempt immediate replicate
-                with contextlib.suppress(Exception):
-                    _replicate()
+                    # Schedule replication to run after the local DB transaction
+                    # commits. Use the saved `instance`'s method (not the
+                    # serializer) so the model-level replication runs as expected.
+                    transaction.on_commit(instance.replicate_to_neon)  # type: ignore
+                except Exception:
+                    # If on_commit isn't available or fails, attempt immediate replicate
+                    logger.exception("on_commit failed for replicate_to_neon, attempting immediate replicate for article id=%s", getattr(instance, "id", None))  # type: ignore
+                    with contextlib.suppress(Exception):
+                        serializer.replicate_to_neon()  # type: ignore
 
             out = ArticleManagerSerializer(instance, context={"request": request}).data  # type: ignore
-            return Response(out, status=status.HTTP_201_CREATED)
+            return Response(out, status=status.HTTP_201_CREATED) # type: ignore
         except Exception as e: 
             logger.exception("Error saving article draft: %s", str(e))
-            return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR) # type: ignore
 
 
 # ADDED 2026-03-16 — Internal endpoint for the FastAPI RAG ingestion service
-class RagCorpusView(APIView):
+class RagCorpusView(APIView): # type: ignore
     """
     Internal endpoint: GET /articles/rag-corpus/?lang=en|es
 
     Returns published articles as a list of:
-      {id, title, plain_text, language}
+    {id, title, plain_text, language}
 
     Protected by the X-RAG-Token header (shared secret via RAG_INTERNAL_TOKEN env var).
     NOT exposed via the public proxy — call only from within the Docker network.
@@ -99,10 +95,10 @@ class RagCorpusView(APIView):
         if not expected:
             # If not configured, deny all access to avoid accidental exposure
             return False
-        received = request.META.get("HTTP_X_RAG_TOKEN", "")
+        received = request.META.get("HTTP_X_RAG_TOKEN", "") # type: ignore
         # Use a constant-time comparison to prevent timing attacks
         import hmac
-        return hmac.compare_digest(received, expected)
+        return hmac.compare_digest(received, expected)  # type: ignore
 
     def extract_plain_text(self, body: object) -> str:  # type: ignore
         """
@@ -136,13 +132,13 @@ class RagCorpusView(APIView):
 
     def get(self, request: Request):  # type: ignore
         """Return published articles for the requested language."""
-        if not self.check_token(request):
-            return Response(
+        if not self.check_token(request): # type: ignore
+            return Response( # type: ignore 
                 {"error": "Unauthorized"},
-                status=status.HTTP_401_UNAUTHORIZED,
+                status=status.HTTP_401_UNAUTHORIZED, # type: ignore
             )
 
-        lang = request.GET.get("lang", "en").lower()[:2]
+        lang = request.GET.get("lang", "en").lower()[:2] # type: ignore
 
         # Import here to avoid circular imports at module level
         from .models import ArticleModel  # type: ignore
@@ -167,10 +163,10 @@ class RagCorpusView(APIView):
             })
 
         logger.debug("RagCorpusView returning %d articles for lang=%s", len(results), lang)  # type: ignore
-        return Response(results, status=status.HTTP_200_OK)
+        return Response(results, status=status.HTTP_200_OK) # type: ignore
 
 
-class ArticleImageUploadView(APIView):
+class ArticleImageUploadView(APIView): # type: ignore
     """POST /articles/images/
 
     Accepts multipart/form-data with `file` or JSON with `base64`.
@@ -179,23 +175,23 @@ class ArticleImageUploadView(APIView):
 
     def post(self, request: Request):  # type: ignore
         expected = os.environ.get("PROXY_KEY", "")
-        received = request.META.get("HTTP_X_INTERNAL_PROXY_KEY", "")
-        if not expected or not hmac.compare_digest(received or "", expected):
-            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+        received = request.META.get("HTTP_X_INTERNAL_PROXY_KEY", "") # type: ignore
+        if not expected or not hmac.compare_digest(received or "", expected): # type: ignore
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN) # type: ignore
 
         # Choose serializer input depending on request type
         try:
             logger.debug("ArticleImageUploadView.post started")
-            if request.content_type and "multipart" in request.content_type:
+            if request.content_type and "multipart" in request.content_type: # type: ignore
                 logger.debug("multipart request detected")
-                data = request.data.copy()
+                data = request.data.copy() # type: ignore
                 serializer = ArticleImageCreateSerializer(data=data)
             else:
                 logger.debug("json/base64 request detected")
-                serializer = ArticleImageCreateSerializer(data=request.data)
+                serializer = ArticleImageCreateSerializer(data=request.data) # type: ignore
 
             logger.debug("serializer created, validating...")
-            if serializer.is_valid():
+            if serializer.is_valid(): # type: ignore
                 logger.debug("serializer valid, saving...")
                 instance = serializer.save()  # type: ignore
                 logger.debug("instance saved: %s", instance) # type: ignore
@@ -206,12 +202,10 @@ class ArticleImageUploadView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)  # type: ignore
         except Exception as e:
             logger.exception("Unhandled error in ArticleImageUploadView.post: %s", str(e))
-            return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR) # type: ignore
 
 # CHANGE LOG
-# Changed by : Copilot
-# Date       : 2026-03-16
-# Reason     : Added RagCorpusView to expose published article text to the
-#              FastAPI RAG ingestion service via a shared-secret-protected endpoint.
-# Impact     : New URL /articles/rag-corpus/ registered in articles/urls.py.
-#              Requires RAG_INTERNAL_TOKEN to be set in Django settings / env.
+# Changed by : JML
+# Date       : 2026-05-16
+# Reason     : Review how Neon DB is called and when.
+# Impact     : New URL /articles/models.py and articles/views.py 

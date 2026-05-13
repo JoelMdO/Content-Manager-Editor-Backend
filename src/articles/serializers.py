@@ -9,6 +9,8 @@ from .models import ArticleImageModel, ArticleModel
 class ArticleManagerSerializer(serializers.ModelSerializer): # type: ignore
 
     class Meta: # type: ignore
+        # ArticleManagerSerializer is a DRF serializer, with model ArticleModel
+        # Refer to ArticleModel will perform the save logic.
         model = ArticleModel
         fields = [
             "id",

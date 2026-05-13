@@ -149,7 +149,7 @@ DATABASES = {
     }
 }
 
-# Optional Neon backup DB. If `NEON_URL` is present the project will expose a
+# Neon backup DB. This will expose a
 # second database alias named `neon` that can be used for replica/backup
 # writes (e.g. instance.save(using='neon')) or running migrations against
 # the remote Neon cluster via `manage.py migrate --database=neon`.
@@ -158,16 +158,18 @@ if NEON_URL:
     try:
         _u = urlparse(NEON_URL)
         DATABASES["neon"] = { # type: ignore
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": _u.path.lstrip("/"),
-            "USER": _u.username,
-            "PASSWORD": _u.password,
-            "HOST": _u.hostname,
-            "PORT": _u.port or "",
-            # Keep connections open for reuse; adjust as needed
-            "CONN_MAX_AGE": 600,
-            # Neon requires TLS; enforce sslmode unless explicitly included
-            "OPTIONS": {"sslmode": "require"},
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('PGDATABASE'),
+            'USER': os.getenv('PGUSER'),
+            'PASSWORD': os.getenv('PGPASSWORD'),
+            'HOST': os.getenv('PGHOST'),
+            'PORT': os.getenv('PGPORT', 5432),
+            'OPTIONS': {
+                'sslmode': 'require',
+                },
+    'DISABLE_SERVER_SIDE_CURSORS': True,
+    #The CONN_HEALTH_CHECKS: True setting prevents errors from idle connections when Neon scales to zero
+    'CONN_HEALTH_CHECKS': True,
         }
     except Exception:
         # If parsing fails, don't crash startup — fall back to default only
