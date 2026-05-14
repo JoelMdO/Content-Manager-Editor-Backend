@@ -1,4 +1,5 @@
 import uuid
+import re
 from typing import Any, Dict
 
 from rest_framework import serializers  # type: ignore
@@ -24,6 +25,26 @@ class ArticleManagerSerializer(serializers.ModelSerializer): # type: ignore
             "published_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    @staticmethod
+    def get_all_drafts(brief: bool = False): # type: ignore
+        """Return drafts.
+        If `brief` is False return a queryset of ArticleModel ordered by
+        `-created_at` (for full serialization). If `brief` is True return a
+        list of dicts with only `id` and `title` suitable for editor lists.
+        """
+        qs = ArticleModel.objects.filter(status="draft").order_by("-created_at")
+        if brief:
+            return list(qs.values("id", "title"))
+        return qs
+
+
+    @staticmethod
+    def get_article_by_title(article_title): # type: ignore
+        try:
+            return ArticleModel.objects.get(title=article_title)
+        except ArticleModel.DoesNotExist:
+            return None
 
 class ArticleImageUploadSerializer(serializers.HyperlinkedModelSerializer): #type: ignore
     class Meta: #type: ignore

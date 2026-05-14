@@ -2,12 +2,13 @@ from typing import List, Union
 
 from django.urls import URLPattern, URLResolver, path
 
-from .views import ArticleDraftViewSet, ArticleImageUploadView, RagCorpusView
+from .views import ArticleDraftViewSet, ArticleImageUploadView
 
 urlpatterns: List[Union[URLPattern, URLResolver]] = [
-    path("", ArticleDraftViewSet.as_view()),
-    # ADDED 2026-03-16 — internal RAG corpus endpoint for FastAPI ingestion service
-    path("rag-corpus/", RagCorpusView.as_view(), name="rag-corpus"),
-    # Image uploads
+    # Image uploads (keep first to avoid path collision with the title-based route)
     path("images/", ArticleImageUploadView.as_view(), name="article-image-upload"),
+    # Also accept title without trailing slash to support clients that omit it
+    path("<path:title>", ArticleDraftViewSet.as_view()),
+    # Root list/create endpoint
+    path("", ArticleDraftViewSet.as_view()),
 ]
