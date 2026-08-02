@@ -23,6 +23,7 @@ Run in CI (handled by GitHub Actions):
 
 import base64
 import os
+import uuid
 
 import httpx
 import pytest
@@ -37,7 +38,10 @@ BASE_URL = os.environ.get("CMS_BASE_URL", "http://localhost:8080")
 RAG_TOKEN = os.environ.get("CMS_RAG_TOKEN", "ci-rag-token")
 PROXY_KEY = os.environ.get("CMS_PROXY_KEY", "ci-proxy-key")
 
-_MINIMAL_PNG = b"\x89PNG\r\n\x1a\n\x00\x00"
+_MINIMAL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
+    "+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +199,7 @@ def test_image_upload_base64_success(client):  # type: ignore
     encoded = base64.b64encode(_MINIMAL_PNG).decode()
     payload = {
         "base64": f"data:image/png;base64,{encoded}",
-        "image_id": "ci-integration-img-001",
+        "image_id": f"ci-integration-img-{uuid.uuid4()}",
         "file_name": "ci-test.png",
     }
     resp = client.post( # type: ignore
@@ -207,6 +211,23 @@ def test_image_upload_base64_success(client):  # type: ignore
     data = resp.json() # type: ignore
     assert "image_id" in data
     assert "file_name" in data
+
+
+@pytest.mark.cms_integration
+def test_image_upload_multipart_success(client):  # type: ignore
+    """POST /articles/images/ with a multipart file saves the image metadata."""
+    image_id = f"ci-multipart-img-{uuid.uuid4()}"
+    resp = client.post(  # type: ignore
+        "/articles/images/",
+        files={"file": ("ci-multipart.png", _MINIMAL_PNG, "image/png")},
+        data={"image_id": image_id, "file_name": "ci-multipart.png"},
+        headers={"X-Internal-Proxy-Key": PROXY_KEY},
+    )  # type: ignore
+    assert resp.status_code in (200, 201)  # type: ignore
+    data = resp.json()  # type: ignore
+    assert data["image_id"] == image_id
+    assert data["file_name"] == "ci-multipart.png"
+    assert "file" in data
 
 
 @pytest.mark.cms_integration

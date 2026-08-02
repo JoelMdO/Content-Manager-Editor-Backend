@@ -27,6 +27,11 @@ load_dotenv()
 # Build paths inside the project like this: BASE_DIR / "subdir".
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Uploaded article images. In Docker, set MEDIA_ROOT=/app/media and mount that
+# directory as a named volume so files survive container recreation.
+MEDIA_ROOT = os.getenv("MEDIA_ROOT", "/app/media")
+MEDIA_URL = os.getenv("MEDIA_URL", "/media/")
+
 # SECURITY WARNING: keep the secret key used in production secret!
 # Prefer explicit SECRET_KEY, fall back to DJANGO_SECRET_KEY (used by compose/.env)
 SECRET_KEY = os.environ.get("SECRET_KEY") or os.environ.get("DJANGO_SECRET_KEY")
