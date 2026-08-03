@@ -100,6 +100,8 @@ class ArticleDraftViewSet(APIView):
         else:
             # List retrieval (brief list for editor: id + title)
             try:
+                if getattr(settings, "NEON_URL", "") and "neon" in connections.databases:
+                    connections["neon"].ensure_connection()
                 data = ArticleManagerSerializer.get_all_drafts(brief=True)  # type: ignore
                 return Response(data, status=status.HTTP_200_OK)  # type: ignore
             except Exception as e:
