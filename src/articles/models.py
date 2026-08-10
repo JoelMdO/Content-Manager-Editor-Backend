@@ -106,8 +106,9 @@ class ArticleImageModel(models.Model):
     type = models.CharField(max_length=255, unique=True)  # matches imageId in frontend #type: ignore
     image_id = models.CharField(max_length=255, unique=True)  # matches imageId in frontend #type: ignore
     file_name = models.CharField(max_length=255) #type: ignore
-    file = models.ImageField(upload_to="article_images/")
-    cloudinary_url = models.URLField(blank=True, null=True) #type: ignore
+    base64 = models.TextField(blank=True, null=True) #type: ignore
+    file = models.ImageField(upload_to="article_images/", null=True, blank=True) #type: ignore
+    url = models.URLField(blank=True, null=True) #type: ignore
     
 
     def __str__(self): #type: ignore
@@ -129,7 +130,22 @@ class ArticleImageModel(models.Model):
         name = file_name or f"{uuid.uuid4()}.{ext}"
         decoded = base64.b64decode(imgstr)
         file_obj = ContentFile(decoded, name)
-
+        print(f"Creating ArticleImageModel from base64 with name: {name}, type: {type}, image_id: {image_id}")
         instance = cls(type=type, image_id=image_id or str(uuid.uuid4()), file_name=name)
-        instance.file.save(name, file_obj, save=True)
+        # Save the file to the storage backend first, then save the model so
+        # `instance.file.url` becomes available.
+        instance.file.save(name, file_obj, save=False)
+        instance.save()
+
+        # Accessing `.url` may raise for some storage backends, so guard it.
+        try:
+            file_url = instance.file.url if instance.file else None
+        except Exception:
+            file_url = None
+
+        # Persist the resolved URL (optional) and return it.
+        instance.url = file_url
+        instance.save(update_fields=["url"]) if instance.pk else instance.save()
+
+        print(f"Saved image {name} with image_id {instance.image_id} and url {instance.url} to the database.")
         return instance

@@ -129,6 +129,21 @@ def test_create_article_draft_invalid_status_returns_400(client):  # type: ignor
     assert resp.status_code == 400 # type: ignore
 
 
+@pytest.mark.cms_integration
+def test_post_existing_article_updates_instead_of_creating_duplicate(client):  # type: ignore
+    """POSTing the same article_id updates the existing draft."""
+    payload = {"article_id": "repeatable-article", "title": "Original", "body": [{"type": "paragraph", "content": "before"}]}
+    first = client.post("/articles/", json=payload)  # type: ignore
+    assert first.status_code == 201 # type: ignore
+
+    updated = {**payload, "title": "Updated", "body": [{"type": "paragraph", "content": "after"}]}
+    second = client.post("/articles/", json=updated)  # type: ignore
+
+    assert second.status_code == 201 # type: ignore
+    assert second.json()["id"] == first.json()["id"] # type: ignore
+    assert second.json()["title"] == "Updated" # type: ignore
+
+
 # ---------------------------------------------------------------------------
 # GET /articles/rag-corpus/ — RAG corpus endpoint
 # ---------------------------------------------------------------------------
@@ -228,6 +243,7 @@ def test_image_upload_multipart_success(client):  # type: ignore
     assert data["image_id"] == image_id
     assert data["file_name"] == "ci-multipart.png"
     assert "file" in data
+    assert "file_url" in data
 
 
 @pytest.mark.cms_integration
@@ -239,6 +255,27 @@ def test_image_upload_no_file_no_base64_returns_400(client):  # type: ignore
         headers={"X-Internal-Proxy-Key": PROXY_KEY},
     )  # type: ignore
     assert resp.status_code == 400 # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_image_upload_url_only_success(client):  # type: ignore
+    """POST /articles/images/ accepts an already-hosted image URL."""
+    image_id = f"ci-url-img-{uuid.uuid4()}"
+    payload = {
+        "type": "cloudinary",
+        "image_id": image_id,
+        "file_name": "ci-url.png",
+        "url": "https://res.cloudinary.com/example/image/upload/ci-url.png",
+    }
+    resp = client.post(  # type: ignore
+        "/articles/images/",
+        json=payload,
+        headers={"X-Internal-Proxy-Key": PROXY_KEY},
+    )  # type: ignore
+    assert resp.status_code in (200, 201)  # type: ignore
+    data = resp.json()  # type: ignore
+    assert data["image_id"] == image_id
+    assert data["url"] == payload["url"]
 
 
 # ---------------------------------------------------------------------------
