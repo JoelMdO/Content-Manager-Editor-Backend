@@ -13,19 +13,31 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 import socket
 import sys
+from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 
-from distutils.util import strtobool
+from dotenv import load_dotenv
+
+from utils.strtbool import DistUtils
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / "subdir".
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Uploaded article images. In Docker, set MEDIA_ROOT=/app/media and mount that
+# directory as a named volume so files survive container recreation.
+MEDIA_ROOT = os.getenv("MEDIA_ROOT")
+MEDIA_URL = os.getenv("MEDIA_URL")
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # Prefer explicit SECRET_KEY, fall back to DJANGO_SECRET_KEY (used by compose/.env)
 SECRET_KEY = os.environ.get("SECRET_KEY") or os.environ.get("DJANGO_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = bool(strtobool(os.getenv("DEBUG", "false")))
+DEBUG = bool(DistUtils.strtobool(os.getenv("DEBUG", "false")))
 
 TESTING = ("test" in sys.argv) or any("pytest" in s for s in sys.argv) or os.environ.get("DJANGO_TESTING") == "1"
 
@@ -35,14 +47,16 @@ ALLOWED_HOSTS = list(map(str.strip, allowed_hosts.split(",")))
 
 # Application definitions
 INSTALLED_APPS = [
-    "pages.apps.PagesConfig",
     "articles.apps.ArticlesConfig",
+    "users.apps.UsersConfig",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "rest_framework",
+    "rest_framework.authtoken",
 ]
 
 MIDDLEWARE = [
@@ -55,10 +69,75 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
+# Send application logs to container stdout so they are visible through
+# `docker compose logs`. Django's default console handler filters INFO logs;
+# explicitly configure the CMS loggers for containerized development.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "container": {
+            "format": "[{levelname}] {name}: {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+            "formatter": "container",
+        },
+    },
+    "loggers": {
+        "articles": {
+            "handlers": ["console"],
+            "level": os.getenv("DJANGO_LOG_LEVEL", "INFO").upper(),
+            "propagate": False,
+        },
+        "users": {
+            "handlers": ["console"],
+            "level": os.getenv("DJANGO_LOG_LEVEL", "INFO").upper(),
+            "propagate": False,
+        },
+    },
+}
+
+# Determine whether the optional JWT auth backend is available. If it's not
+# installed, fall back to an empty authentication list so imports don't fail.
+_jwt_available = True
+try:
+    import importlib
+    importlib.import_module("rest_framework_simplejwt")
+except Exception:
+    _jwt_available = False
+
+if TESTING or not _jwt_available:
+    REST_FRAMEWORK = {  # type: ignore
+        "DEFAULT_AUTHENTICATION_CLASSES": [],
+        "DEFAULT_THROTTLE_CLASSES": [],
+        "DEFAULT_THROTTLE_RATES": {},
+    }
+else:
+    REST_FRAMEWORK = {  # type: ignore
+        "DEFAULT_AUTHENTICATION_CLASSES": [
+            "rest_framework_simplejwt.authentication.JWTAuthentication",
+        ],
+        "DEFAULT_THROTTLE_CLASSES": [
+            "rest_framework.throttling.AnonRateThrottle",
+        ],
+        "DEFAULT_THROTTLE_RATES": {
+            "anon": "10/min",
+        },
+    }
+
+    SIMPLE_JWT = {
+        "ACCESS_TOKEN_LIFETIME": timedelta(hours=12),
+        "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    }
+
 # Add whitenoise in non-testing environments only (avoid import during tests)
-if not TESTING:
-    if "whitenoise.middleware.WhiteNoiseMiddleware" not in MIDDLEWARE:
-        MIDDLEWARE.insert(0, "whitenoise.middleware.WhiteNoiseMiddleware")
+if not TESTING and "whitenoise.middleware.WhiteNoiseMiddleware" not in MIDDLEWARE:
+    MIDDLEWARE.insert(0, "whitenoise.middleware.WhiteNoiseMiddleware")
 
 if DEBUG and not TESTING:
     if "debug_toolbar" not in INSTALLED_APPS:  # type: ignore
@@ -108,6 +187,32 @@ DATABASES = {
     }
 }
 
+# Neon backup DB. This will expose a
+# second database alias named `neon` that can be used for replica/backup
+# writes (e.g. instance.save(using='neon')) or running migrations against
+# the remote Neon cluster via `manage.py migrate --database=neon`.
+NEON_URL = os.getenv("NEON_URL", "")
+if NEON_URL:
+    try:
+        _u = urlparse(NEON_URL)
+        DATABASES["neon"] = { # type: ignore
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('PGDATABASE'),
+            'USER': os.getenv('PGUSER'),
+            'PASSWORD': os.getenv('PGPASSWORD'),
+            'HOST': os.getenv('PGHOST'),
+            'PORT': os.getenv('PGPORT', 5432),
+            'OPTIONS': {
+                'sslmode': 'require',
+                },
+    'DISABLE_SERVER_SIDE_CURSORS': True,
+    #The CONN_HEALTH_CHECKS: True setting prevents errors from idle connections when Neon scales to zero
+    'CONN_HEALTH_CHECKS': True,
+        }
+    except Exception:
+        # If parsing fails, don't crash startup — fall back to default only
+        pass
+
 # ADDED 2026-03-16 — Shared secret for the internal RAG corpus endpoint
 # The FastAPI service sends this value in the X-RAG-Token header when fetching articles.
 RAG_INTERNAL_TOKEN = os.getenv("RAG_INTERNAL_TOKEN", "")
@@ -145,12 +250,21 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
 # Caching
 # https://docs.djangoproject.com/en/6.0/topics/cache/
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": REDIS_URL,
+# Fall back to local-memory cache when Redis is not configured (e.g. integration-test
+# containers that don't run a Redis sidecar). DRF throttling will work in-process.
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+        }
     }
-}
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
 
 # Celery
 # https://docs.celeryproject.org/en/stable/userguide/configuration.html
@@ -171,7 +285,7 @@ STATIC_URL = "/static/"
 STATICFILES_DIRS = ["/public", os.path.join(BASE_DIR, "..", "public")]
 STATIC_ROOT = "/public_collected"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-
+INTERNAL_IPS = ["127.0.0.1", "10.0.2.2"]
 # Django Debug Toolbar
 # https://django-debug-toolbar.readthedocs.io/
 if DEBUG and not TESTING:
@@ -180,9 +294,12 @@ if DEBUG and not TESTING:
     # to access the toolbar from our browser outside of the container.
     try:
         hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
-        INTERNAL_IPS = [ip[: ip.rfind(".")] + ".1" for ip in ips] + [
+        new_ips = [ip[: ip.rfind(".")] + ".1" for ip in ips] + [
             "127.0.0.1",
             "10.0.2.2",
         ]
+        INTERNAL_IPS[:] = new_ips
     except Exception:
-        INTERNAL_IPS = ["127.0.0.1", "10.0.2.2"]
+        INTERNAL_IPS[:] = ["127.0.0.1", "10.0.2.2"]
+
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")

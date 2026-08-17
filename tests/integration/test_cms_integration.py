@@ -23,6 +23,7 @@ Run in CI (handled by GitHub Actions):
 
 import base64
 import os
+import uuid
 
 import httpx
 import pytest
@@ -37,7 +38,10 @@ BASE_URL = os.environ.get("CMS_BASE_URL", "http://localhost:8080")
 RAG_TOKEN = os.environ.get("CMS_RAG_TOKEN", "ci-rag-token")
 PROXY_KEY = os.environ.get("CMS_PROXY_KEY", "ci-proxy-key")
 
-_MINIMAL_PNG = b"\x89PNG\r\n\x1a\n\x00\x00"
+_MINIMAL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
+    "+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +129,21 @@ def test_create_article_draft_invalid_status_returns_400(client):  # type: ignor
     assert resp.status_code == 400 # type: ignore
 
 
+@pytest.mark.cms_integration
+def test_post_existing_article_updates_instead_of_creating_duplicate(client):  # type: ignore
+    """POSTing the same article_id updates the existing draft."""
+    payload = {"article_id": "repeatable-article", "title": "Original", "body": [{"type": "paragraph", "content": "before"}]}
+    first = client.post("/articles/", json=payload)  # type: ignore
+    assert first.status_code == 201 # type: ignore
+
+    updated = {**payload, "title": "Updated", "body": [{"type": "paragraph", "content": "after"}]}
+    second = client.post("/articles/", json=updated)  # type: ignore
+
+    assert second.status_code == 201 # type: ignore
+    assert second.json()["id"] == first.json()["id"] # type: ignore
+    assert second.json()["title"] == "Updated" # type: ignore
+
+
 # ---------------------------------------------------------------------------
 # GET /articles/rag-corpus/ — RAG corpus endpoint
 # ---------------------------------------------------------------------------
@@ -195,7 +214,7 @@ def test_image_upload_base64_success(client):  # type: ignore
     encoded = base64.b64encode(_MINIMAL_PNG).decode()
     payload = {
         "base64": f"data:image/png;base64,{encoded}",
-        "image_id": "ci-integration-img-001",
+        "image_id": f"ci-integration-img-{uuid.uuid4()}",
         "file_name": "ci-test.png",
     }
     resp = client.post( # type: ignore
@@ -210,6 +229,24 @@ def test_image_upload_base64_success(client):  # type: ignore
 
 
 @pytest.mark.cms_integration
+def test_image_upload_multipart_success(client):  # type: ignore
+    """POST /articles/images/ with a multipart file saves the image metadata."""
+    image_id = f"ci-multipart-img-{uuid.uuid4()}"
+    resp = client.post(  # type: ignore
+        "/articles/images/",
+        files={"file": ("ci-multipart.png", _MINIMAL_PNG, "image/png")},
+        data={"image_id": image_id, "file_name": "ci-multipart.png"},
+        headers={"X-Internal-Proxy-Key": PROXY_KEY},
+    )  # type: ignore
+    assert resp.status_code in (200, 201)  # type: ignore
+    data = resp.json()  # type: ignore
+    assert data["image_id"] == image_id
+    assert data["file_name"] == "ci-multipart.png"
+    assert "file" in data
+    assert "file_url" in data
+
+
+@pytest.mark.cms_integration
 def test_image_upload_no_file_no_base64_returns_400(client):  # type: ignore
     """POST /articles/images/ with no file/base64 returns 400."""
     resp = client.post( # type: ignore
@@ -218,3 +255,94 @@ def test_image_upload_no_file_no_base64_returns_400(client):  # type: ignore
         headers={"X-Internal-Proxy-Key": PROXY_KEY},
     )  # type: ignore
     assert resp.status_code == 400 # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_image_upload_url_only_success(client):  # type: ignore
+    """POST /articles/images/ accepts an already-hosted image URL."""
+    image_id = f"ci-url-img-{uuid.uuid4()}"
+    payload = {
+        "type": "cloudinary",
+        "image_id": image_id,
+        "file_name": "ci-url.png",
+        "url": "https://res.cloudinary.com/example/image/upload/ci-url.png",
+    }
+    resp = client.post(  # type: ignore
+        "/articles/images/",
+        json=payload,
+        headers={"X-Internal-Proxy-Key": PROXY_KEY},
+    )  # type: ignore
+    assert resp.status_code in (200, 201)  # type: ignore
+    data = resp.json()  # type: ignore
+    assert data["image_id"] == image_id
+    assert data["url"] == payload["url"]
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/ — user authentication
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.cms_integration
+def test_auth_login_no_body_returns_400(client):  # type: ignore
+    """POST /auth/login/ with empty body must return 400."""
+    resp = client.post("/auth/login/", json={})  # type: ignore
+    assert resp.status_code == 400  # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_auth_login_invalid_credentials_returns_401(client):  # type: ignore
+    """POST /auth/login/ with unrecognised credentials must return 401."""
+    resp = client.post(  # type: ignore
+        "/auth/login/",
+        json={"email": "nobody@example.com", "password": "wrong"},
+    )
+    assert resp.status_code == 401  # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_auth_upsert_user_missing_email_returns_400(client):  # type: ignore
+    """POST /auth/users/ without email must return 400."""
+    resp = client.post(  # type: ignore
+        "/auth/users/",
+        json={},
+        headers={"X-Internal-Proxy-Key": PROXY_KEY},
+    )
+    assert resp.status_code == 400  # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_auth_upsert_user_creates_new_user_returns_201(client):  # type: ignore
+    """POST /auth/users/ with a new unique email must return 201."""
+    resp = client.post(  # type: ignore
+        "/auth/users/",
+        json={"email": "ci-new-user@integration.test", "name": "CI User"},
+        headers={"X-Internal-Proxy-Key": PROXY_KEY},
+    )
+    assert resp.status_code == 201  # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_auth_upsert_user_existing_user_returns_200(client):  # type: ignore
+    """POST /auth/users/ twice with the same email must return 200 on the second call."""
+    payload = {"email": "ci-idempotent@integration.test", "name": "CI Idempotent"}
+    client.post("/auth/users/", json=payload, headers={"X-Internal-Proxy-Key": PROXY_KEY})  # type: ignore — seed
+    resp = client.post("/auth/users/", json=payload, headers={"X-Internal-Proxy-Key": PROXY_KEY})  # type: ignore — duplicate
+    assert resp.status_code == 200  # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_auth_password_reset_always_returns_200(client):  # type: ignore
+    """POST /auth/password-reset/ must always return 200 — no user enumeration."""
+    resp = client.post(  # type: ignore
+        "/auth/password-reset/",
+        json={"email": "ghost@integration.test"},
+    )
+    assert resp.status_code == 200  # type: ignore
+
+
+@pytest.mark.cms_integration
+def test_auth_logout_returns_200(client):  # type: ignore
+    """POST /auth/logout/ must return 200."""
+    resp = client.post("/auth/logout/", json={})  # type: ignore
+    assert resp.status_code == 200  # type: ignore

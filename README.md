@@ -18,6 +18,14 @@ Key features:
 - [HTML]
 - [CSS]
 
+## Frontend note
+
+This repository is backend-only. The Editor frontend lives in the separate `Editor/` repository at the workspace root. You may add `assets/`, Tailwind, and other frontend build files from this repo if you plan to build or serve the frontend here.
+
+If you add frontend files, ensure the Dockerfile's `assets` stage (or `COPY` of `/app/public`) is adjusted.
+
+If you want to serve the Editor UI from this repo later, the recommended workflow is to build the frontend in the `Editor/` repo and copy the generated `public/` files into this project's `/public` before building the Docker image (or use a CI artifact).
+
 ## API Endpoints (summary)
 
 - `POST /articles/` — create or update article drafts. Sends full CMS `body` as a JSON list of blocks (title, paragraphs, image blocks, etc.). Stored in `ArticleModel` (`body` is a JSONField).

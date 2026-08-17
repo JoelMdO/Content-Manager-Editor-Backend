@@ -15,18 +15,34 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+import django
 from django.conf import settings
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import include, path
+from django.conf.urls.static import static
+
+
+def home_view(request):  # type: ignore[no-untyped-def]
+    """Minimal home endpoint — confirms the API is running."""
+    return JsonResponse({"status": "ok", "django": django.__version__})
+
 
 urlpatterns = [
+    path("", home_view),
     path("up/", include("up.urls")),
-    path("", include("pages.urls")),
     path("articles/", include("articles.urls")),
     path("admin/", admin.site.urls),
+    path("auth/", include("users.urls")),
 ]
-if not settings.TESTING:
+
+## Adds a route for serving media files.
+## GET /media/<path> will serve files from the MEDIA_ROOT directory.
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+if settings.DEBUG and not settings.TESTING:
     urlpatterns = [
         *urlpatterns,
         path("__debug__/", include("debug_toolbar.urls")),
     ]
+    
