@@ -20,9 +20,15 @@ class ArticleModel(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False) #type: ignore
     article_id = models.CharField(max_length=512, blank=True, null=True)  # from type:id block #type: ignore
-    title = models.TextField(blank=True, null=True) #type: ignore
+    title = models.CharField(max_length=255, blank=True, null=True) #type: ignore
+    es_title = models.CharField(max_length=255, blank=True, null=True) #type: ignore
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft") #type: ignore
-    body = models.JSONField(default=list) #type: ignore
+    body = models.JSONField(default=list, null=True, blank=True) #type: ignore
+    es_body = models.JSONField(default=list, null=True, blank=True) #type: ignore
+    section = models.CharField(max_length=255, blank=True, null=True) #type: ignore
+    es_section = models.CharField(max_length=255, blank=True, null=True) #type: ignore
+    summary = models.CharField(max_length=255, blank=True, null=True) #type: ignore
+    es_summary = models.CharField(max_length=255, blank=True, null=True) #type: ignore
     # Linked images (populated when blocks reference images)
     images = models.ManyToManyField('ArticleImageModel', blank=True, related_name="articles") #type: ignore
     created_at = models.DateTimeField(auto_now_add=True) #type: ignore
@@ -63,8 +69,14 @@ class ArticleModel(models.Model):
                 data = {  # type: ignore
                     "article_id": self.article_id,
                     "title": self.title,
+                    "es_title": self.es_title,
+                    "summary": self.summary,
+                    "es_summary": self.es_summary,                    
                     "status": self.status,
                     "body": self.body,  # type: ignore
+                    "es_body": self.es_body,
+                    "section": self.section,
+                    "es_section": self.es_section,
                     "created_at": self.created_at,
                     "updated_at": self.updated_at,
                     "published_at": self.published_at,
@@ -103,7 +115,9 @@ class ArticleModel(models.Model):
 class ArticleImageModel(models.Model):
     """Stores uploaded images referenced in article blocks"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False) #type: ignore
-    type = models.CharField(max_length=255, unique=True)  # matches imageId in frontend #type: ignore
+    # `type` is the MIME/type label (for example, image/png), not an image
+    # identifier. Multiple uploaded images can therefore share the same type.
+    type = models.CharField(max_length=255)  # matches imageId in frontend #type: ignore
     image_id = models.CharField(max_length=255, unique=True)  # matches imageId in frontend #type: ignore
     file_name = models.CharField(max_length=255) #type: ignore
     base64 = models.TextField(blank=True, null=True) #type: ignore
@@ -117,12 +131,14 @@ class ArticleImageModel(models.Model):
     @classmethod
     def create_from_base64(cls, base64_str: str, type: str = "uploaded", file_name: str | None = None, image_id: str | None = None):
         """Create and save an ArticleImageModel from a base64 data URL or raw base64 string.
-
         Returns the saved instance.
         """
+        print(f"Creating ArticleImageModel from base64 with type: {type}, file_name: {file_name}, image_id: {image_id}")  # Debugging statement
         if ";base64," in base64_str:
+            print("Detected base64 data URL format")  # Debugging statement
             fmt, imgstr = base64_str.split(";base64,", 1)
             ext = fmt.split("/")[-1]
+            print(f"Extension: {ext}, image string length: {len(imgstr)}")  # Debugging statement
         else:
             imgstr = base64_str
             ext = (file_name or "jpg").split(".")[-1]
@@ -149,3 +165,30 @@ class ArticleImageModel(models.Model):
 
         print(f"Saved image {name} with image_id {instance.image_id} and url {instance.url} to the database.")
         return instance
+
+class ArticleQuerySet(models.Model):
+        def get_all_drafts(brief: bool = False): # type: ignore
+            """Return drafts.
+            If `brief` is False return a queryset of ArticleModel ordered by
+            `-created_at` (for full serialization). If `brief` is True return a
+            list of dicts with only `id` and `title` suitable for editor lists.
+            """
+            qs = ArticleModel.objects.filter(status="draft").order_by("-created_at")
+            if brief:
+                return list(qs.values("id", "title"))
+            return qs
+    
+        def get_all_articles(): # type: ignore
+            print("get_all_articles called")  # Debugging statement
+            """Return all articles."""
+            qs = ArticleModel.objects.all().order_by("title")
+            return list(qs.values("id", "title"))
+            
+    
+    
+        def get_article_by_title(article_title): # type: ignore
+            try:
+                return ArticleModel.objects.get(title=article_title)
+            except ArticleModel.DoesNotExist:
+                return None
+    

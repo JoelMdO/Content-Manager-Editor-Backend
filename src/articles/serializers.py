@@ -15,8 +15,14 @@ class ArticleManagerSerializer(serializers.ModelSerializer): # type: ignore
             "id",
             "article_id",
             "title",
+            "es_title",
             "status",
             "body",
+            "es_body",
+            "section",
+            "es_section",
+            "summary",
+            "es_summary",
             "images",
             "created_at",
             "updated_at",
@@ -24,29 +30,10 @@ class ArticleManagerSerializer(serializers.ModelSerializer): # type: ignore
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
-    @staticmethod
-    def get_all_drafts(brief: bool = False): # type: ignore
-        """Return drafts.
-        If `brief` is False return a queryset of ArticleModel ordered by
-        `-created_at` (for full serialization). If `brief` is True return a
-        list of dicts with only `id` and `title` suitable for editor lists.
-        """
-        qs = ArticleModel.objects.filter(status="draft").order_by("-created_at")
-        if brief:
-            return list(qs.values("id", "title"))
-        return qs
 
-
-    @staticmethod
-    def get_article_by_title(article_title): # type: ignore
-        try:
-            return ArticleModel.objects.get(title=article_title)
-        except ArticleModel.DoesNotExist:
-            return None
-
-class ArticleImageUploadSerializer(serializers.ModelSerializer): #type: ignore
+class ArticleImageOutputReadSerializer(serializers.ModelSerializer): #type: ignore
     file_url = serializers.SerializerMethodField()  # type: ignore
-
+    print(f"ArticleImageOutputReadSerializer initialized")  # Debugging statement
     class Meta: #type: ignore
         model = ArticleImageModel
         fields = ["id", "type", "image_id", "file_name", "base64", "file", "url", "file_url"]
@@ -62,15 +49,17 @@ class ArticleImageUploadSerializer(serializers.ModelSerializer): #type: ignore
 
         return obj.file.url if obj.file else None
 
-class ArticleImageCreateSerializer(serializers.Serializer): # type: ignore
-    # Accept file uploads (use FileField to avoid strict image validation in tests)
+class ArticleImageCreateModelInstanceSerializer(serializers.Serializer): # type: ignore
+    ##================================
+    ## Serializer for creating ArticleImageModel instances.
+    ##================================
     type = serializers.CharField(required=False, allow_blank=True)
     image_id = serializers.CharField(required=False, allow_blank=True)
     file_name = serializers.CharField(required=False, allow_blank=True) 
     base64 = serializers.CharField(required=False, allow_blank=True)
     file = serializers.FileField(required=False, allow_null=True)
     url = serializers.URLField(required=False, allow_blank=True)
-
+    print("ArticleImageCreateModelInstanceSerializer initialized")
     def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
         if not attrs.get("file") and not attrs.get("base64") and not attrs.get("url"):
             raise serializers.ValidationError("Either 'file', 'base64', or 'url' must be provided")
@@ -94,10 +83,13 @@ class ArticleImageCreateSerializer(serializers.Serializer): # type: ignore
                 return existing_image
 
         if base64_str and not file:
+            print("Creating ArticleImageModel from base64")  # Debugging statement
             instance = ArticleImageModel.create_from_base64(
                 base64_str, type=type_field, file_name=file_name, image_id=image_id
             )
+            print(f"Created ArticleImageModel with id: {instance.id}")  # Debugging statement
             if url:
+                print(f"Setting URL for ArticleImageModel with id: {instance.id} to {url}")  # Debugging statement
                 instance.url = url
                 instance.save()
             return instance
@@ -115,7 +107,7 @@ class ArticleImageCreateSerializer(serializers.Serializer): # type: ignore
                 inst.save()
             return inst
 
-        if url:
+        if url and not file and not base64_str:
             return ArticleImageModel.objects.create(
                 type=type_field,
                 image_id=image_id or str(uuid.uuid4()),

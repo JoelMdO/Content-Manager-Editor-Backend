@@ -29,8 +29,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Uploaded article images. In Docker, set MEDIA_ROOT=/app/media and mount that
 # directory as a named volume so files survive container recreation.
-MEDIA_ROOT = os.getenv("MEDIA_ROOT", "/app/media")
-MEDIA_URL = os.getenv("MEDIA_URL", "/media/")
+MEDIA_ROOT = os.getenv("MEDIA_ROOT")
+MEDIA_URL = os.getenv("MEDIA_URL")
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # Prefer explicit SECRET_KEY, fall back to DJANGO_SECRET_KEY (used by compose/.env)
@@ -68,6 +68,39 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+# Send application logs to container stdout so they are visible through
+# `docker compose logs`. Django's default console handler filters INFO logs;
+# explicitly configure the CMS loggers for containerized development.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "container": {
+            "format": "[{levelname}] {name}: {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+            "formatter": "container",
+        },
+    },
+    "loggers": {
+        "articles": {
+            "handlers": ["console"],
+            "level": os.getenv("DJANGO_LOG_LEVEL", "INFO").upper(),
+            "propagate": False,
+        },
+        "users": {
+            "handlers": ["console"],
+            "level": os.getenv("DJANGO_LOG_LEVEL", "INFO").upper(),
+            "propagate": False,
+        },
+    },
+}
 
 # Determine whether the optional JWT auth backend is available. If it's not
 # installed, fall back to an empty authentication list so imports don't fail.

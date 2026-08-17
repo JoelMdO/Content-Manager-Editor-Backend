@@ -45,20 +45,20 @@ Published articles may be scheduled for optional replication to the Neon databas
 
 ### ArticleImageModel
 
-Stores image metadata and optional local files. Relevant fields include `type`, `image_id`, `file_name`, `file`, and `cloudinary_url`. The model includes a helper for creating an image from base64 data.
+Stores image metadata and optional local files. Relevant fields include `type`, `image_id`, `file_name`, `file`, and `url`. The model includes a helper for creating an image from base64 data.
 
 ## Routes and API
 
 Top-level routes are defined in `src/config/urls.py`:
 
-| Route | Purpose |
-| --- | --- |
-| `/` | Service status and Django version |
-| `/up/` | Basic health check |
-| `/up/databases` | Database connectivity check |
-| `/articles/` | Article API |
-| `/auth/` | Authentication and user API |
-| `/admin/` | Django admin |
+| Route           | Purpose                           |
+| --------------- | --------------------------------- |
+| `/`             | Service status and Django version |
+| `/up/`          | Basic health check                |
+| `/up/databases` | Database connectivity check       |
+| `/articles/`    | Article API                       |
+| `/auth/`        | Authentication and user API       |
+| `/admin/`       | Django admin                      |
 
 ### Articles
 

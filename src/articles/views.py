@@ -14,11 +14,11 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .serializers import (
-    ArticleImageCreateSerializer,
-    ArticleImageUploadSerializer,
+    ArticleImageCreateModelInstanceSerializer,
+    ArticleImageOutputReadSerializer,
     ArticleManagerSerializer,
 )
-from .models import ArticleImageModel, ArticleModel
+from .models import ArticleModel, ArticleQuerySet 
 
 logger = logging.getLogger(__name__)
 
@@ -65,20 +65,17 @@ class ArticleDraftViewSet(APIView):
                         f"Existing article found, updating article_id={existing_article.article_id}"
                     )
                     with transaction.atomic():
-                        existing_article = serializer.update(
-                            existing_article, serializer.validated_data
-                        )  # type: ignore
+                        serializer = ArticleManagerSerializer(existing_article, data=request.data, context={"request": request})  # type: ignore
+                        if not serializer.is_valid():  # type: ignore
+                            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)  # type: ignore
+                        serializer.save()  # type: ignore
                     return Response({"message": "Article Updated"}, status=status.HTTP_200_OK) # type: ignore
-
                 print(f"Created new article with article_id={article_id}")
                 existing_article = serializer.save()  # type: ignore
-                return Response({"message": "Article Created"}, status=status.HTTP_201_CREATED) # type: ignore
             except DatabaseError as db_err:
                 print(f"Database error saving article draft: {str(db_err)}")
                 return Response({"error": "Database 1 error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR) # type: ignore
 
-            # After the local transaction commits to avoid blocking the
-            # primary write. Will write if the article is as published to Neon DB.
             if article_status == "published":  # type: ignore
                 try:
                     # Schedule replication to run after the local DB transaction
@@ -105,11 +102,12 @@ class ArticleDraftViewSet(APIView):
         # presence of a `title` path parameter OR a `title` query parameter.
         # Support callers that prefer `/articles/?title=...` (e.g., Postman)
         req_title = title or request.GET.get("title")
+        req_type = request.GET.get("type")
         logger.debug("ArticleDraftViewSet.get called: method=%s path_title=%s query_params=%s req_title=%s", request.method, title, dict(request.GET), req_title)
         if req_title is not None:
             # Detail retrieval
             try:
-                instance = ArticleManagerSerializer.get_article_by_title(req_title)  # type: ignore
+                instance = ArticleQuerySet.get_article_by_title(req_title)  # type: ignore
                 if instance is None:
                     return Response({"error": "Article not found"}, status=status.HTTP_404_NOT_FOUND) # type: ignore
                 serializer = ArticleManagerSerializer(instance, context={"request": request})  # type: ignore
@@ -117,12 +115,23 @@ class ArticleDraftViewSet(APIView):
             except Exception as e:
                 logger.exception("Error retrieving article with title=%s: %s", title, str(e))
                 return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR) # type: ignore
+        elif req_type == "all":
+            # List retrieval (full list for external clients)
+            print("Retrieving full article list for external clients")
+            try:
+                articles = ArticleQuerySet.get_all_articles()  # type: ignore
+                print(f"Retrieved {len(articles)} articles for external clients")
+                print(f"Retrieved articles {articles}")
+                return Response(articles, status=status.HTTP_200_OK)  # type: ignore
+            except Exception as e:
+                logger.exception("Error retrieving full article drafts list: %s", str(e))
+                return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)  # type: ignore
         else:
             # List retrieval (brief list for editor: id + title)
             try:
                 if getattr(settings, "NEON_URL", "") and "neon" in connections.databases:
                     connections["neon"].ensure_connection()
-                data = ArticleManagerSerializer.get_all_drafts(brief=True)  # type: ignore
+                data = ArticleQuerySet.get_all_drafts(brief=True)  # type: ignore
                 return Response(data, status=status.HTTP_200_OK)  # type: ignore
             except Exception as e:
                 logger.exception("Error retrieving article drafts list: %s", str(e))
@@ -185,38 +194,34 @@ class ArticleImageUploadView(APIView): # type: ignore
 
     def post(self, request: Request):  # type: ignore
         expected = os.environ.get("PROXY_KEY", "")
-        print(f"ArticleImageUploadView.post request={request}")
+        print(f"ArticleImageUploadView.post started path={request.path}")
         # WSGI/Django places HTTP headers into META with HTTP_ prefix and
         # dashes replaced by underscores (uppercased). Also support the
         # `Request.headers` accessor for robustness.
         received = request.META.get("HTTP_X_INTERNAL_PROXY_KEY", "") or getattr(request, "headers", {}).get("X-Internal-Proxy-Key", "")  # type: ignore
-        print(f"ArticleImageUploadView.post expected={expected}, received={received}")
+        print(f"ArticleImageUploadView proxy key check configured={bool(expected)} received={bool(received)}")
         if not expected or not hmac.compare_digest((received or ""), expected):  # type: ignore
             return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)  # type: ignore
 
         # Choose serializer input depending on request type
         try:
-            print("ArticleImageUploadView.post started")
             if request.content_type and "multipart" in request.content_type: # type: ignore
-                print("multipart request detected")
+                print("ArticleImageUploadView multipart request detected")
                 data = request.data.copy() # type: ignore
-                serializer = ArticleImageCreateSerializer(data=data)
+                serializer = ArticleImageCreateModelInstanceSerializer(data=data)
             else:
-                print("json/base64 request detected")
-                serializer = ArticleImageCreateSerializer(data=request.data) # type: ignore
+                print("ArticleImageUploadView json/base64 request detected")
+                serializer = ArticleImageCreateModelInstanceSerializer(data=request.data) # type: ignore
 
-            print("serializer created, validating...")
             if serializer.is_valid(): # type: ignore
-                print("serializer valid, saving...")
                 instance = serializer.save()  # type: ignore
-                print(f"instance saved: {instance}")
-                out = ArticleImageUploadSerializer(instance, context={"request": request}).data  # type: ignore
-                print(f"serialized output: {out}")
+                out = ArticleImageOutputReadSerializer(instance, context={"request": request}).data  # type: ignore
+                print(f"ArticleImageUploadView image saved image_id={out.get('image_id')}")
                 return Response(out, status=status.HTTP_201_CREATED)  # type: ignore
-            print(f"serializer errors: {serializer.errors}")
+            print(f"ArticleImageUploadView validation failed errors={serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)  # type: ignore
         except Exception as e:
-            print(f"Unhandled error in ArticleImageUploadView.post: {str(e)}")
+            print(f"Unhandled image upload error: {str(e)}")
             return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR) # type: ignore
 
 # CHANGE LOG

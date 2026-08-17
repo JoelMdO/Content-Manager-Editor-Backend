@@ -88,14 +88,14 @@ src/
 
 ### ArticleImageModel
 
-| Field            | Type       | Notes                                 |
-| ---------------- | ---------- | ------------------------------------- |
-| `id`             | UUIDField  | Auto-generated                        |
-| `type`           | CharField  | Unique; matches `imageId` on frontend |
-| `image_id`       | CharField  | Unique identifier                     |
-| `file_name`      | CharField  |                                       |
-| `file`           | ImageField | Stored under `article_images/`        |
-| `cloudinary_url` | URLField   | Optional CDN URL                      |
+| Field       | Type       | Notes                                 |
+| ----------- | ---------- | ------------------------------------- |
+| `id`        | UUIDField  | Auto-generated                        |
+| `type`      | CharField  | Unique; matches `imageId` on frontend |
+| `image_id`  | CharField  | Unique identifier                     |
+| `file_name` | CharField  |                                       |
+| `file`      | ImageField | Stored under `article_images/`        |
+| `url`       | URLField   | Optional CDN URL                      |
 
 ---
 
